@@ -1,4 +1,4 @@
-# QR Hunt — Edge 浏览器二维码识别插件开发计划
+# QR SCANNER — Edge 浏览器二维码识别插件开发计划
 
 > 状态：草案（Draft）  
 > 目标：在 Edge 浏览器中自动识别网页上的二维码，提供高亮、选中和跳转能力。
@@ -7,7 +7,7 @@
 
 ## 1. 项目概述
 
-**名称**：QR Hunt（暂定）  
+**名称**：QR SCANNER（暂定）  
 **平台**：Microsoft Edge（Chromium，Manifest V3）  
 **核心功能**：
 - 自动扫描当前网页中的二维码（包括 `<img>`、CSS 背景图、Canvas）。

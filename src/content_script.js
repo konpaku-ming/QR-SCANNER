@@ -24,10 +24,10 @@
     isScanning = true;
     clearOverlays();
 
-    console.log('[QR Hunt] Scanning started...');
+    console.log('[QR SCANNER] Scanning started...');
 
     const images = collectImages();
-    console.log(`[QR Hunt] Found ${images.length} images to scan`);
+    console.log(`[QR SCANNER] Found ${images.length} images to scan`);
 
     for (const img of images) {
       try {
@@ -41,7 +41,7 @@
     }
 
     isScanning = false;
-    console.log('[QR Hunt] Scanning finished');
+    console.log('[QR SCANNER] Scanning finished');
   }
 
   // 收集页面中所有图片元素
@@ -67,7 +67,7 @@
 
         // 检查 jsQR 是否可用（由 background.js 动态注入）
         if (typeof jsQR !== 'function') {
-          console.warn('[QR Hunt] jsQR not loaded');
+          console.warn('[QR SCANNER] jsQR not loaded');
           resolve(null);
           return;
         }

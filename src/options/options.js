@@ -3,5 +3,5 @@
 
 (async function init() {
   // TODO: 读取和保存设置
-  console.log('[QR Hunt] Options page loaded');
+  console.log('[QR SCANNER] Options page loaded');
 })();

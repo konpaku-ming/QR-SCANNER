@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "QR Hunt",
+  "name": "QR SCANNER",
   "version": "0.1.0",
   "description": "自动识别网页上的二维码，点击即可跳转",
   "permissions": [

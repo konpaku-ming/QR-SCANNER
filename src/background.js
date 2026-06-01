@@ -2,7 +2,7 @@
 // 负责调度扫描任务、跨页面通信、上下文菜单和历史记录管理
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('[QR Hunt] Extension installed');
+  console.log('[QR SCANNER] Extension installed');
 
   // 创建右键菜单
   chrome.contextMenus.create({
@@ -30,7 +30,7 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'scan-qr-image') {
     const imageUrl = info.srcUrl;
-    console.log('[QR Hunt] Context menu scan:', imageUrl);
+    console.log('[QR SCANNER] Context menu scan:', imageUrl);
     // TODO: 发送消息给 Content Script 对指定图片进行解码
   }
 });
@@ -45,6 +45,6 @@ async function triggerScan(tabId) {
 
     await chrome.tabs.sendMessage(tabId, { action: 'START_SCAN' });
   } catch (err) {
-    console.error('[QR Hunt] Scan failed:', err);
+    console.error('[QR SCANNER] Scan failed:', err);
   }
 }
