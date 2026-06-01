@@ -8,22 +8,33 @@
   let overlays = [];
 
   // 监听来自 Background 的消息
+  // 注意：all_frames=true 后，iframe 中也会收到消息，
+  // 但涉及全屏 UI 的操作只在主 frame (window.top) 中执行
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    const isTopFrame = window === window.top;
+
     if (request.action === 'START_SCAN') {
-      startScan();
-      sendResponse({ status: 'scanning' });
+      if (isTopFrame) startScan();
+      sendResponse({ status: isTopFrame ? 'scanning' : 'ignored-in-iframe' });
     } else if (request.action === 'START_SCAN_SCREENSHOT') {
-      startScreenshotScan(request.screenshotUrl);
-      sendResponse({ status: 'scanning' });
+      if (isTopFrame) startScreenshotScan(request.screenshotUrl);
+      sendResponse({ status: isTopFrame ? 'scanning' : 'ignored-in-iframe' });
+    } else if (request.action === 'START_AUTO_SCAN_SCREENSHOT') {
+      if (isTopFrame) startScreenshotScan(request.screenshotUrl, { clearExisting: false });
+      sendResponse({ status: isTopFrame ? 'scanning' : 'ignored-in-iframe' });
     } else if (request.action === 'SCAN_SINGLE_IMAGE') {
+      // iframe 中也可能需要单图扫描
       scanSingleImage(request.imageUrl);
       sendResponse({ status: 'scanning' });
     } else if (request.action === 'SCAN_IMAGE_DATA_URL') {
       scanSingleImageDataUrl(request.dataUrl, request.imageUrl);
       sendResponse({ status: 'scanning' });
     } else if (request.action === 'CLEAR_OVERLAYS') {
-      clearOverlays();
-      sendResponse({ status: 'cleared' });
+      if (isTopFrame) clearOverlays();
+      sendResponse({ status: isTopFrame ? 'cleared' : 'ignored-in-iframe' });
+    } else if (request.action === 'START_REGION_SELECT') {
+      if (isTopFrame) startRegionSelect();
+      sendResponse({ status: isTopFrame ? 'selecting' : 'ignored-in-iframe' });
     }
     return true;
   });
@@ -94,6 +105,9 @@
 
   // 在二维码位置渲染覆盖层
   function renderOverlay(imgElement, qrData) {
+    if (imgElement.dataset.qrhuntScanned === 'true') return;
+    imgElement.dataset.qrhuntScanned = 'true';
+
     const rect = imgElement.getBoundingClientRect();
     const overlay = document.createElement('div');
     overlay.className = 'qrhunt-overlay';
@@ -121,13 +135,18 @@
     overlays.forEach((el) => el.remove());
     overlays = [];
     document.querySelectorAll('.qrhunt-menu').forEach((el) => el.remove());
+    document.querySelectorAll('img[data-qrhunt-scanned="true"]').forEach((img) => {
+      delete img.dataset.qrhuntScanned;
+    });
   }
 
   // 基于截图的二维码扫描（解决 CORS 跨域限制）
-  async function startScreenshotScan(screenshotUrl) {
+  async function startScreenshotScan(screenshotUrl, options = {}) {
     if (isScanning) return;
     isScanning = true;
-    clearOverlays();
+    if (options.clearExisting !== false) {
+      clearOverlays();
+    }
 
     console.log('[QR SCANNER] Screenshot scanning started...');
 
@@ -483,5 +502,259 @@
   function truncate(str, len) {
     if (!str) return '';
     return str.length > len ? str.slice(0, len) + '…' : str;
+  }
+
+  /* ============================================================
+     SPA 动态监听 — MutationObserver + 路由变化监听
+     ============================================================ */
+
+  let mutationObserver = null;
+  let mutationScanTimer = null;
+  let lastScanTime = 0;
+  const MUTATION_SCAN_DELAY = 1500;
+  const MIN_SCAN_INTERVAL = 3000;
+
+  function startMutationObserver() {
+    if (mutationObserver) return;
+
+    // 启动后 3 秒内不触发自动扫描，避免与页面初始加载冲突
+    lastScanTime = Date.now();
+
+    mutationObserver = new MutationObserver((mutations) => {
+      if (!shouldScanForMutations(mutations)) return;
+      debouncedAutoScan();
+    });
+
+    mutationObserver.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+
+    observeHistoryChanges();
+    console.log('[QR SCANNER] MutationObserver started');
+  }
+
+  function stopMutationObserver() {
+    if (mutationObserver) {
+      mutationObserver.disconnect();
+      mutationObserver = null;
+      console.log('[QR SCANNER] MutationObserver stopped');
+    }
+  }
+
+  // 判断 DOM 变化中是否包含值得扫描的新图片
+  function shouldScanForMutations(mutations) {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.tagName === 'IMG' || (node.querySelector && node.querySelector('img'))) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  // 防抖自动扫描：DOM 变化停止后延迟执行，并限制最小扫描间隔
+  function debouncedAutoScan() {
+    if (mutationScanTimer) {
+      clearTimeout(mutationScanTimer);
+    }
+
+    mutationScanTimer = setTimeout(() => {
+      mutationScanTimer = null;
+
+      const now = Date.now();
+      if (now - lastScanTime < MIN_SCAN_INTERVAL) {
+        console.log('[QR SCANNER] Auto scan skipped: too frequent');
+        return;
+      }
+
+      if (document.hidden) {
+        console.log('[QR SCANNER] Auto scan skipped: page hidden');
+        return;
+      }
+
+      lastScanTime = now;
+      console.log('[QR SCANNER] Auto scan triggered');
+      chrome.runtime.sendMessage({ action: 'TRIGGER_AUTO_SCAN' });
+    }, MUTATION_SCAN_DELAY);
+  }
+
+  // 监听浏览器路由变化（SPA 常用 history API）
+  function observeHistoryChanges() {
+    window.addEventListener('popstate', () => {
+      console.log('[QR SCANNER] Route change detected (popstate)');
+      debouncedAutoScan();
+    });
+
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = function (...args) {
+      originalPushState.apply(this, args);
+      console.log('[QR SCANNER] Route change detected (pushState)');
+      debouncedAutoScan();
+    };
+
+    history.replaceState = function (...args) {
+      originalReplaceState.apply(this, args);
+      console.log('[QR SCANNER] Route change detected (replaceState)');
+      debouncedAutoScan();
+    };
+  }
+
+  /* ============================================================
+     区域截图选区识别
+     ============================================================ */
+
+  let regionSelecting = false;
+
+  function startRegionSelect() {
+    if (regionSelecting) return;
+    regionSelecting = true;
+
+    cleanupRegionSelect();
+
+    const mask = document.createElement('div');
+    mask.className = 'qrhunt-region-mask';
+
+    const box = document.createElement('div');
+    box.className = 'qrhunt-region-box';
+
+    const hint = document.createElement('div');
+    hint.className = 'qrhunt-region-hint';
+    hint.textContent = '拖拽框选二维码区域，按 ESC 取消';
+
+    document.body.appendChild(mask);
+    document.body.appendChild(box);
+    document.body.appendChild(hint);
+
+    let startX, startY;
+
+    function onMouseDown(e) {
+      startX = e.clientX;
+      startY = e.clientY;
+      box.style.left = startX + 'px';
+      box.style.top = startY + 'px';
+      box.style.width = '0';
+      box.style.height = '0';
+      box.style.display = 'block';
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
+
+    function onMouseMove(e) {
+      const x = Math.min(startX, e.clientX);
+      const y = Math.min(startY, e.clientY);
+      const w = Math.abs(e.clientX - startX);
+      const h = Math.abs(e.clientY - startY);
+      box.style.left = x + 'px';
+      box.style.top = y + 'px';
+      box.style.width = w + 'px';
+      box.style.height = h + 'px';
+    }
+
+    async function onMouseUp(e) {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      document.removeEventListener('keydown', onKeyDown);
+
+      const rect = box.getBoundingClientRect();
+      cleanupRegionSelect();
+
+      if (rect.width < 20 || rect.height < 20) {
+        showScanToast('选区太小，请重新选择', 'warning');
+        regionSelecting = false;
+        return;
+      }
+
+      showScanToast('正在识别选区...', 'info');
+      await requestRegionScreenshot(rect);
+    }
+
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        cleanupRegionSelect();
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.removeEventListener('keydown', onKeyDown);
+        regionSelecting = false;
+        showScanToast('已取消框选', 'info');
+      }
+    }
+
+    mask.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('keydown', onKeyDown);
+  }
+
+  function cleanupRegionSelect() {
+    document.querySelectorAll('.qrhunt-region-mask, .qrhunt-region-box, .qrhunt-region-hint').forEach((el) => el.remove());
+  }
+
+  async function requestRegionScreenshot(rect) {
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'CAPTURE_REGION' }, resolve);
+      });
+
+      if (!response || !response.screenshotUrl) {
+        showScanToast('截图失败', 'error');
+        regionSelecting = false;
+        return;
+      }
+
+      await decodeRegion(response.screenshotUrl, rect);
+    } catch (err) {
+      console.error('[QR SCANNER] Region scan failed:', err);
+      showScanToast('区域扫描失败', 'error');
+    } finally {
+      regionSelecting = false;
+    }
+  }
+
+  async function decodeRegion(screenshotUrl, rect) {
+    try {
+      const screenshotImg = await loadImage(screenshotUrl);
+      const dpr = window.devicePixelRatio || 1;
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+      const sx = Math.round(rect.left * dpr);
+      const sy = Math.round(rect.top * dpr);
+      const sw = Math.round(rect.width * dpr);
+      const sh = Math.round(rect.height * dpr);
+
+      canvas.width = sw;
+      canvas.height = sh;
+      ctx.drawImage(screenshotImg, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      if (typeof jsQR !== 'function') {
+        showScanToast('jsQR 未加载', 'error');
+        return;
+      }
+
+      const imageData = ctx.getImageData(0, 0, sw, sh);
+      const code = jsQR(imageData.data, sw, sh);
+
+      if (code && code.data) {
+        showScanToast(`识别成功：${truncate(code.data, 40)}`, 'success');
+        showFloatingResult(code.data);
+        saveHistory(code.data);
+      } else {
+        showScanToast('选区内未识别到二维码', 'warning');
+      }
+    } catch (err) {
+      console.error('[QR SCANNER] Decode region failed:', err);
+      showScanToast('识别失败', 'error');
+    }
+  }
+
+  // 只在主页面启动 MutationObserver，避免 iframe 中重复扫描
+  if (window === window.top) {
+    startMutationObserver();
   }
 })();

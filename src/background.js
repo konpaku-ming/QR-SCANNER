@@ -45,6 +45,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     chrome.action.setBadgeBackgroundColor({ color: '#0078d4' });
   }
+
+  if (request.action === 'TRIGGER_AUTO_SCAN') {
+    if (sender.tab && sender.tab.id) {
+      triggerAutoScan(sender.tab.id);
+    }
+  }
+
+  if (request.action === 'CAPTURE_REGION') {
+    (async () => {
+      try {
+        const tab = await chrome.tabs.get(sender.tab.id);
+        await chrome.scripting.executeScript({
+          target: { tabId: sender.tab.id },
+          files: ['src/lib/jsQR.js']
+        });
+        const screenshotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+          format: 'png'
+        });
+        sendResponse({ screenshotUrl });
+      } catch (err) {
+        console.error('[QR SCANNER] Capture region failed:', err);
+        sendResponse({ error: err.message });
+      }
+    })();
+    return true;
+  }
 });
 
 // 监听右键菜单点击
@@ -109,4 +135,27 @@ async function fetchImageAsDataUrl(imageUrl) {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+// 触发自动扫描（SPA 动态内容变化后由 Content Script 请求）
+async function triggerAutoScan(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+
+    const screenshotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+      format: 'png'
+    });
+
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['src/lib/jsQR.js']
+    });
+
+    await chrome.tabs.sendMessage(tabId, {
+      action: 'START_AUTO_SCAN_SCREENSHOT',
+      screenshotUrl
+    });
+  } catch (err) {
+    console.error('[QR SCANNER] Auto scan failed:', err);
+  }
 }
