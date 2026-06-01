@@ -26,25 +26,87 @@ chrome.commands.onCommand.addListener(async (command, tab) => {
   }
 });
 
+// 监听来自 Content Script / Popup 的消息
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'FETCH_IMAGE') {
+    fetchImageAsDataUrl(request.imageUrl)
+      .then((dataUrl) => sendResponse({ dataUrl }))
+      .catch((err) => {
+        console.error('[QR SCANNER] Fetch image failed:', err);
+        sendResponse({ error: err.message });
+      });
+    return true; // 保持消息通道开启，等待异步响应
+  }
+
+  if (request.action === 'UPDATE_BADGE') {
+    chrome.action.setBadgeText({
+      text: request.count > 0 ? String(request.count) : '',
+      tabId: sender.tab.id
+    });
+    chrome.action.setBadgeBackgroundColor({ color: '#0078d4' });
+  }
+});
+
 // 监听右键菜单点击
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === 'scan-qr-image') {
     const imageUrl = info.srcUrl;
     console.log('[QR SCANNER] Context menu scan:', imageUrl);
-    // TODO: 发送消息给 Content Script 对指定图片进行解码
+
+    try {
+      // 注入 jsQR 库
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['src/lib/jsQR.js']
+      });
+
+      // 发送单图扫描指令给 Content Script
+      await chrome.tabs.sendMessage(tab.id, {
+        action: 'SCAN_SINGLE_IMAGE',
+        imageUrl
+      });
+    } catch (err) {
+      console.error('[QR SCANNER] Context menu scan failed:', err);
+    }
   }
 });
 
-// 触发扫描的核心逻辑
+// 触发扫描的核心逻辑（截图扫描方案，解决 CORS 限制）
 async function triggerScan(tabId) {
   try {
+    const tab = await chrome.tabs.get(tabId);
+
+    // 1. 截取当前可见视口
+    const screenshotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+      format: 'png'
+    });
+
+    // 2. 注入 jsQR 库
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['src/lib/jsQR.js']
     });
 
-    await chrome.tabs.sendMessage(tabId, { action: 'START_SCAN' });
+    // 3. 发送截图与扫描指令
+    await chrome.tabs.sendMessage(tabId, {
+      action: 'START_SCAN_SCREENSHOT',
+      screenshotUrl
+    });
   } catch (err) {
-    console.error('[QR SCANNER] Scan failed:', err);
+    console.error('[QR SCANNER] Screenshot scan failed:', err);
   }
+}
+
+async function fetchImageAsDataUrl(imageUrl) {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }

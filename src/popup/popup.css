@@ -79,3 +79,87 @@ hr {
 .footer a:hover {
   text-decoration: underline;
 }
+
+/* 历史记录 */
+.history-section {
+  margin-top: 12px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.history-header h2 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.btn-text:hover {
+  color: #0078d4;
+  text-decoration: underline;
+}
+
+.history-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.history-item {
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-content {
+  font-size: 12px;
+  color: #333;
+  word-break: break-all;
+  line-height: 1.4;
+  margin-bottom: 3px;
+}
+
+.history-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.history-time {
+  font-size: 11px;
+  color: #999;
+}
+
+.history-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.history-actions .btn-text {
+  font-size: 11px;
+  color: #0078d4;
+}
+
+.history-empty {
+  font-size: 12px;
+  color: #999;
+  text-align: center;
+  padding: 12px 0;
+}

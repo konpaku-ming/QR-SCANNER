@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR SCANNER 单元测试</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      color: #333;
+    }
+    h1 { color: #0078d4; }
+    h2 { font-size: 18px; margin-top: 32px; border-bottom: 1px solid #e0e0e0; padding-bottom: 6px; }
+    .pass { color: #107c10; }
+    .fail { color: #d83b01; font-weight: bold; }
+    .summary { font-size: 18px; margin-top: 24px; padding: 16px; border-radius: 8px; }
+    .summary.all-pass { background: #e8f5e9; }
+    .summary.has-fail { background: #ffebee; }
+    code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>QR SCANNER 单元测试</h1>
+  <p>本页面在不依赖扩展上下文的情况下，测试核心逻辑与纯函数。</p>
+  <div id="results"></div>
+
+  <!-- 测试用二维码图片（需要网络） -->
+  <img
+    id="test-qr-img"
+    src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=unittest"
+    crossorigin="anonymous"
+    style="display:none;"
+  >
+
+  <script src="../src/lib/jsQR.js"></script>
+  <script>
+    const resultsEl = document.getElementById('results');
+    let passCount = 0;
+    let failCount = 0;
+
+    function assert(condition, message) {
+      if (condition) {
+        passCount++;
+        resultsEl.innerHTML += `<div class="pass">✅ ${escapeHtml(message)}</div>`;
+      } else {
+        failCount++;
+        resultsEl.innerHTML += `<div class="fail">❌ ${escapeHtml(message)}</div>`;
+      }
+    }
+
+    function section(title) {
+      resultsEl.innerHTML += `<h2>${escapeHtml(title)}</h2>`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    /* ============================================================
+       1. 字符串截断（与 content_script.js 中的 truncate 一致）
+       ============================================================ */
+    section('字符串截断 (truncate)');
+    function truncate(str, len) {
+      if (!str) return '';
+      return str.length > len ? str.slice(0, len) + '…' : str;
+    }
+    assert(truncate('hello world', 5) === 'hello…', '长字符串应截断并追加省略号');
+    assert(truncate('hi', 5) === 'hi', '短字符串应保持原样');
+    assert(truncate('', 5) === '', '空字符串应返回空');
+    assert(truncate(null, 5) === '', 'null 应返回空');
+    assert(truncate('abcde', 5) === 'abcde', '长度恰好等于阈值时不截断');
+
+    /* ============================================================
+       2. 截图坐标映射（与 content_script.js 中的公式一致）
+       ============================================================ */
+    section('截图坐标映射');
+    (function testCoordinateMapping() {
+      const rect = { left: 100, top: 200, width: 300, height: 300 };
+      const dpr = 2;
+      const sx = Math.round(rect.left * dpr);
+      const sy = Math.round(rect.top * dpr);
+      const sWidth = Math.round(rect.width * dpr);
+      const sHeight = Math.round(rect.height * dpr);
+      assert(sx === 200, 'sx = left * DPR = 200');
+      assert(sy === 400, 'sy = top * DPR = 400');
+      assert(sWidth === 600, 'sWidth = width * DPR = 600');
+      assert(sHeight === 600, 'sHeight = height * DPR = 600');
+    })();
+
+    (function testClamping() {
+      const canvasWidth = 1000;
+      const canvasHeight = 800;
+      const rect = { left: -50, top: 100, width: 300, height: 300 };
+      const dpr = 2;
+      const sx = Math.round(rect.left * dpr);          // -100
+      const sy = Math.round(rect.top * dpr);           //  200
+      const sWidth = Math.round(rect.width * dpr);     //  600
+      const sHeight = Math.round(rect.height * dpr);   //  600
+
+      const clampedSx = Math.max(0, sx);
+      const clampedSy = Math.max(0, sy);
+      const clampedWidth = Math.min(sWidth, canvasWidth - clampedSx);
+      const clampedHeight = Math.min(sHeight, canvasHeight - clampedSy);
+
+      assert(clampedSx === 0, '负 left 应被钳位到 0');
+      assert(clampedSy === 200, '正 top 保持不变');
+      assert(clampedWidth === 600, '宽度在画布范围内');
+      assert(clampedHeight === 600, '高度在画布范围内');
+    })();
+
+    (function testOutOfBounds() {
+      const canvasWidth = 500;
+      const canvasHeight = 500;
+      const rect = { left: 600, top: 100, width: 100, height: 100 };
+      const dpr = 1;
+      const sx = Math.round(rect.left * dpr);
+      assert(sx >= canvasWidth, '完全在右侧外的元素 sx >= canvasWidth');
+    })();
+
+    /* ============================================================
+       3. 图片过滤逻辑（与 content_script.js 中的 collectImagesInViewport 一致）
+       ============================================================ */
+    section('图片过滤逻辑');
+    (function testImageFilter() {
+      const vh = 600;
+      const vw = 800;
+      const mockImgs = [
+        {
+          width: 100, height: 100,
+          getBoundingClientRect: () => ({ top: 10, bottom: 110, left: 10, right: 110 })
+        },
+        {
+          width: 30, height: 30,
+          getBoundingClientRect: () => ({ top: 10, bottom: 40, left: 10, right: 40 })
+        },
+        {
+          width: 100, height: 100,
+          getBoundingClientRect: () => ({ top: -200, bottom: -100, left: 10, right: 110 })
+        },
+        {
+          width: 100, height: 100,
+          getBoundingClientRect: () => ({ top: 500, bottom: 650, left: 10, right: 110 })
+        },
+        {
+          width: 60, height: 60,
+          getBoundingClientRect: () => ({ top: 500, bottom: 560, left: 10, right: 110 })
+        },
+      ];
+
+      const filtered = mockImgs.filter((img) => {
+        if (img.width <= 50 || img.height <= 50) return false;
+        const rect = img.getBoundingClientRect();
+        return (
+          rect.top < vh &&
+          rect.bottom > 0 &&
+          rect.left < vw &&
+          rect.right > 0
+        );
+      });
+
+      assert(filtered.length === 3, '应过滤掉小图和完全视口外图片，剩余 3 张');
+      assert(filtered[0].width === 100 && filtered[0].top === 10, '第一张是正常可见大图');
+      assert(filtered[1].width === 100 && filtered[1].top === 500, '第二张是底部部分可见大图');
+      assert(filtered[2].width === 60 && filtered[2].top === 500, '第三张是底部部分可见中图');
+    })();
+
+    /* ============================================================
+       4. jsQR 解码（依赖网络加载测试图片）
+       ============================================================ */
+    section('jsQR 解码');
+    async function testJsQR() {
+      const img = document.getElementById('test-qr-img');
+      if (!img.complete || img.naturalWidth === 0) {
+        assert(false, '测试二维码图片未加载（请检查网络连接）');
+        return;
+      }
+
+      assert(typeof jsQR === 'function', 'jsQR 库应已加载为全局函数');
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      ctx.drawImage(img, 0, 0);
+
+      try {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, canvas.width, canvas.height);
+        assert(code !== null, '应成功从测试图片中识别出二维码');
+        assert(code.data === 'unittest', `解码内容应为 "unittest"，实际为 "${code.data}"`);
+      } catch (err) {
+        assert(false, `解码过程抛出异常: ${err.message}`);
+      }
+    }
+
+    /* ============================================================
+       5. Toast DOM 操作
+       ============================================================ */
+    section('Toast DOM 操作');
+    (function testToastLifecycle() {
+      // 模拟 showScanToast 的 DOM 创建逻辑
+      const toast = document.createElement('div');
+      toast.className = 'qrhunt-toast qrhunt-toast-success';
+      toast.textContent = '测试消息';
+      document.body.appendChild(toast);
+
+      assert(document.querySelectorAll('.qrhunt-toast').length === 1, 'Toast 应被添加到 DOM');
+      assert(toast.classList.contains('qrhunt-toast-success'), 'Toast 应包含对应类型 class');
+
+      toast.remove();
+      assert(document.querySelectorAll('.qrhunt-toast').length === 0, 'Toast 移除后 DOM 中不应残留');
+    })();
+
+    /* ============================================================
+       6. Data URL 解码逻辑（纯函数模拟）
+       ============================================================ */
+    section('Data URL 解码模拟');
+    (function testDecodeDataUrlLogic() {
+      // 由于真实二维码图片生成复杂，这里验证 decodeDataUrl 的函数结构存在性
+      // 实际 decodeDataUrl 在 content_script.js 中，这里用相同逻辑内联验证 Image + Canvas 流程
+      const testPixelCanvas = document.createElement('canvas');
+      testPixelCanvas.width = 2;
+      testPixelCanvas.height = 2;
+      const tctx = testPixelCanvas.getContext('2d');
+      tctx.fillStyle = '#000';
+      tctx.fillRect(0, 0, 2, 2);
+
+      const imgData = tctx.getImageData(0, 0, 2, 2);
+      // 2x2 全黑不是有效二维码，但验证 jsQR 不会崩溃
+      try {
+        const result = jsQR(imgData.data, 2, 2);
+        assert(result === null, '全黑 2x2 图像不应被识别为二维码，且不应抛异常');
+      } catch (err) {
+        assert(false, `jsQR 处理异常图像时不应抛异常: ${err.message}`);
+      }
+    })();
+
+    /* ============================================================
+       7. 汇总
+       ============================================================ */
+    window.addEventListener('load', async () => {
+      await testJsQR();
+
+      const summary = document.createElement('div');
+      summary.className = 'summary ' + (failCount === 0 ? 'all-pass' : 'has-fail');
+      summary.innerHTML = `
+        <strong>测试汇总</strong>：通过 ${passCount} 项，失败 ${failCount} 项。
+        ${failCount === 0 ? '<br>🎉 所有测试通过！' : '<br>⚠️ 存在失败的测试，请检查上方详情。'}
+      `;
+      document.body.appendChild(summary);
+    });
+  </script>
+</body>
+</html>

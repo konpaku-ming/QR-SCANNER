@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QR SCANNER 手动测试页</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 20px;
+      max-width: 900px;
+      margin: 0 auto;
+      line-height: 1.6;
+      color: #333;
+    }
+    h1 { color: #0078d4; }
+    h2 {
+      margin-top: 48px;
+      border-bottom: 2px solid #0078d4;
+      padding-bottom: 8px;
+      font-size: 20px;
+    }
+    .section { margin: 20px 0; }
+    img {
+      margin: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .small img { width: 30px; height: 30px; }
+    .scroll-target {
+      height: 120vh;
+      display: flex;
+      align-items: flex-end;
+      padding-bottom: 40px;
+    }
+    .note {
+      color: #555;
+      font-size: 14px;
+      background: #f0f7fc;
+      padding: 12px 16px;
+      border-radius: 6px;
+      border-left: 4px solid #0078d4;
+    }
+    .expect {
+      color: #107c10;
+      font-size: 14px;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>QR SCANNER 手动测试页</h1>
+  <p class="note">
+    在 Edge 中加载扩展后，打开此页面，使用扩展的各项功能进行验证。<br>
+    本页面引用的二维码图片来自 <code>api.qrserver.com</code>，需要网络连接。
+  </p>
+
+  <h2>1. 基础识别 — 多个同域/跨域二维码</h2>
+  <div class="section">
+    <p>以下两张图片包含二维码。</p>
+    <p class="expect">预期：点击 Popup「扫描当前页面」或按 Alt+Shift+Q 后，两张图片均出现蓝色高亮 Overlay，Badge 显示 2。</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://bing.com" alt="QR 1">
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://microsoft.com" alt="QR 2">
+  </div>
+
+  <h2>2. 过滤测试 — 小尺寸图片</h2>
+  <div class="section small">
+    <p>以下图片显示尺寸为 30×30 像素，低于 50×50 阈值。</p>
+    <p class="expect">预期：扫描时自动跳过该图片，不应出现 Overlay。</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=30x30&data=tiny" alt="Tiny QR">
+  </div>
+
+  <h2>3. 非二维码图片</h2>
+  <div class="section">
+    <p>以下图片不是二维码。</p>
+    <p class="expect">预期：扫描后不应在该图片位置生成 Overlay。</p>
+    <img src="https://via.placeholder.com/200x200/f0f0f0/333?text=Not+a+QR" alt="Placeholder">
+  </div>
+
+  <h2>4. 右键菜单单图扫描</h2>
+  <div class="section">
+    <p>右键点击以下图片，选择「扫描此图片中的二维码」。</p>
+    <p class="expect">预期：弹出 Toast「识别成功」，并在图片上出现高亮 Overlay。点击 Overlay 应弹出操作菜单（打开链接 / 复制 / 关闭）。</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=right-click-test" alt="Right click test">
+  </div>
+
+  <h2>5. 操作菜单交互</h2>
+  <div class="section">
+    <p>扫描下方二维码后，点击蓝色高亮框测试菜单。</p>
+    <p class="expect">预期：弹出菜单包含「打开链接」「复制」「关闭」。点击「复制」后页面顶部出现绿色 Toast「已复制到剪贴板」。点击页面空白处菜单消失。</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=menu-interaction-test" alt="Menu test">
+  </div>
+
+  <h2>6. 清除标记</h2>
+  <div class="section">
+    <p>扫描任意区域后，点击 Popup「清除标记」。</p>
+    <p class="expect">预期：所有 Overlay 和操作菜单消失，Badge 数字清零。</p>
+  </div>
+
+  <h2>7. 视口外二维码（需滚动）</h2>
+  <div class="scroll-target">
+    <div>
+      <p>滚动到此区域后，再执行扫描。</p>
+      <p class="expect">预期：未滚动时截图扫描不应识别此二维码；滚动到视口内后再扫描，应正常识别。</p>
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=below-fold" alt="Below fold">
+    </div>
+  </div>
+</body>
+</html>
