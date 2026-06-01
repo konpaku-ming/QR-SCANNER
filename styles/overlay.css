@@ -1,0 +1,30 @@
+/* 注入页面的 Overlay 样式 */
+/* 使用极高的 z-index 和固定定位确保覆盖层在最上层 */
+
+.qrhunt-overlay {
+  position: absolute;
+  z-index: 2147483647;
+  border: 3px solid #0078d4;
+  border-radius: 4px;
+  background: rgba(0, 120, 212, 0.1);
+  cursor: pointer;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.05);
+  transition: background 0.2s;
+  pointer-events: auto;
+}
+
+.qrhunt-overlay:hover {
+  background: rgba(0, 120, 212, 0.25);
+  border-color: #005a9e;
+}
+
+/* 扫描高亮动画 */
+@keyframes qrhunt-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(0, 120, 212, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(0, 120, 212, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 120, 212, 0); }
+}
+
+.qrhunt-overlay {
+  animation: qrhunt-pulse 2s infinite;
+}
