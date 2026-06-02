@@ -56,10 +56,10 @@
     本页面引用的二维码图片来自 <code>api.qrserver.com</code>，需要网络连接。
   </p>
 
-  <h2>1. 基础识别 — 多个同域/跨域二维码</h2>
+  <h2>1. 基础识别 — 整图多二维码检测</h2>
   <div class="section">
-    <p>以下两张图片包含二维码。</p>
-    <p class="expect">预期：点击 Popup「扫描当前页面」或按 Alt+Shift+Q 后，两张图片均出现蓝色高亮 Overlay，Badge 显示 2。</p>
+    <p>以下两张图片包含二维码。整图扫描不再依赖 <img> 元素，可检测视口内任意位置的二维码。</p>
+    <p class="expect">预期：点击 Popup「扫描当前页面」或按 Alt+Shift+Q 后，两张图片均出现蓝色高亮 Overlay，Badge 显示 2。二维码在截图中的位置与 Overlay 位置应精确对应。</p>
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://bing.com" alt="QR 1">
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://microsoft.com" alt="QR 2">
   </div>
@@ -102,7 +102,7 @@
   <div class="scroll-target">
     <div>
       <p>滚动到此区域后，再执行扫描。</p>
-      <p class="expect">预期：未滚动时截图扫描不应识别此二维码；滚动到视口内后再扫描，应正常识别。</p>
+      <p class="expect">预期：未滚动时截图扫描（只截取当前视口）不应识别此二维码；滚动到视口内后再扫描，应正常识别。整图扫描可检测视口内任意位置的二维码，不限于 <img> 标签。</p>
       <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=below-fold" alt="Below fold">
     </div>
   </div>

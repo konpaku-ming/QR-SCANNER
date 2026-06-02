@@ -51,7 +51,7 @@
 
     for (const img of images) {
       try {
-        const result = await decodeImage(img);
+        const result = await decodeSingleImage(img);
         if (result) {
           renderOverlay(img, result);
           saveHistory(result);
@@ -73,8 +73,8 @@
     return imgs.filter((img) => img.width > 50 && img.height > 50);
   }
 
-  // 对单个图片进行二维码解码
-  async function decodeImage(imgElement) {
+  // 对单个图片进行二维码解码（legacy 单图扫描）
+  async function decodeSingleImage(imgElement) {
     return new Promise((resolve) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -130,6 +130,27 @@
     overlays.push(overlay);
   }
 
+  // 根据 CSS 坐标渲染覆盖层（不依赖 <img> 元素）
+  function renderOverlayAtRect(x, y, w, h, qrData) {
+    const overlay = document.createElement('div');
+    overlay.className = 'qrhunt-overlay';
+    overlay.title = '点击打开菜单：' + qrData;
+
+    overlay.style.top = `${window.scrollY + y}px`;
+    overlay.style.left = `${window.scrollX + x}px`;
+    overlay.style.width = `${w}px`;
+    overlay.style.height = `${h}px`;
+
+    overlay.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showQrMenu(overlay, qrData);
+    });
+
+    document.body.appendChild(overlay);
+    overlays.push(overlay);
+  }
+
   // 清除所有覆盖层和菜单
   function clearOverlays() {
     overlays.forEach((el) => el.remove());
@@ -140,7 +161,7 @@
     });
   }
 
-  // 基于截图的二维码扫描（解决 CORS 跨域限制）
+  // 基于截图的整图二维码扫描（不再依赖 <img> 元素裁剪）
   async function startScreenshotScan(screenshotUrl, options = {}) {
     if (isScanning) return;
     isScanning = true;
@@ -151,68 +172,38 @@
     console.log('[QR SCANNER] Screenshot scanning started...');
 
     try {
-      const images = collectImagesInViewport();
-      console.log(`[QR SCANNER] Found ${images.length} images in viewport to scan`);
-
-      if (images.length === 0) {
-        isScanning = false;
-        return;
-      }
-
-      // 加载截图
       const screenshotImg = await loadImage(screenshotUrl);
       const dpr = window.devicePixelRatio || 1;
 
-      // 创建 canvas 并绘制完整截图
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      canvas.width = screenshotImg.width;
-      canvas.height = screenshotImg.height;
-      ctx.drawImage(screenshotImg, 0, 0);
+      console.log(`[QR SCANNER] Screenshot size: ${screenshotImg.width}x${screenshotImg.height}, DPR: ${dpr}`);
 
-      console.log(`[QR SCANNER] Screenshot size: ${canvas.width}x${canvas.height}, DPR: ${dpr}`);
+      // 使用共享的 decodeImage 进行整图多二维码检测
+      const results = decodeImage(screenshotImg);
 
-      for (const img of images) {
-        try {
-          const rect = img.getBoundingClientRect();
-
-          // 将视口 CSS 坐标映射为截图物理像素坐标
-          const sx = Math.round(rect.left * dpr);
-          const sy = Math.round(rect.top * dpr);
-          const sWidth = Math.round(rect.width * dpr);
-          const sHeight = Math.round(rect.height * dpr);
-
-          // 边界检查：跳过完全在截图外的元素
-          if (sx >= canvas.width || sy >= canvas.height) continue;
-          if (sx + sWidth <= 0 || sy + sHeight <= 0) continue;
-
-          // 裁剪到截图有效区域内
-          const clampedSx = Math.max(0, sx);
-          const clampedSy = Math.max(0, sy);
-          const clampedWidth = Math.min(sWidth, canvas.width - clampedSx);
-          const clampedHeight = Math.min(sHeight, canvas.height - clampedSy);
-
-          if (clampedWidth < 50 || clampedHeight < 50) continue;
-
-          const imageData = ctx.getImageData(clampedSx, clampedSy, clampedWidth, clampedHeight);
-
-          if (typeof jsQR !== 'function') {
-            console.warn('[QR SCANNER] jsQR not loaded');
-            continue;
+      if (results.length === 0) {
+        showScanToast('未识别到二维码', 'warning');
+      } else {
+        showScanToast(`识别成功，共 ${results.length} 个二维码`, 'success');
+        for (const result of results) {
+          if (result.location) {
+            // 将截图中的像素坐标映射为页面 CSS 坐标
+            const loc = result.location;
+            const xs = [loc.topLeftCorner.x, loc.topRightCorner.x, loc.bottomRightCorner.x, loc.bottomLeftCorner.x];
+            const ys = [loc.topLeftCorner.y, loc.topRightCorner.y, loc.bottomRightCorner.y, loc.bottomLeftCorner.y];
+            const minX = Math.min(...xs) / dpr;
+            const maxX = Math.max(...xs) / dpr;
+            const minY = Math.min(...ys) / dpr;
+            const maxY = Math.max(...ys) / dpr;
+            renderOverlayAtRect(minX, minY, maxX - minX, maxY - minY, result.data);
+          } else {
+            showFloatingResult(result.data);
           }
-
-          const code = jsQR(imageData.data, clampedWidth, clampedHeight);
-          if (code && code.data) {
-            console.log('[QR SCANNER] Screenshot scan found:', code.data.substring(0, 100));
-            renderOverlay(img, code.data);
-            saveHistory(code.data);
-          }
-        } catch (e) {
-          // 单张图片扫描失败，继续下一张
+          saveHistory(result.data);
         }
       }
     } catch (err) {
       console.error('[QR SCANNER] Screenshot scan error:', err);
+      showScanToast('扫描失败', 'error');
     } finally {
       isScanning = false;
       console.log('[QR SCANNER] Screenshot scanning finished');
@@ -287,7 +278,7 @@
 
     if (img) {
       try {
-        const result = await decodeImage(img);
+        const result = await decodeSingleImage(img);
         if (result) {
           renderOverlay(img, result);
           showScanToast(`识别成功：${truncate(result, 40)}`, 'success');

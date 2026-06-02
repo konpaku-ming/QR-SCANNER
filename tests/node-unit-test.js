@@ -220,6 +220,115 @@ test('jsQR 不应因异常尺寸崩溃', () => {
 });
 
 /* ============================================================
+   5. qr-decoder 纯函数
+   ============================================================ */
+console.log('\nqr-decoder 纯函数');
+
+const vm = require('vm');
+const fs = require('fs');
+const path = require('path');
+
+// 为 Node.js 提供 ImageData polyfill
+global.ImageData = class ImageData {
+  constructor(data, width, height) {
+    this.data = data;
+    this.width = width;
+    this.height = height;
+  }
+};
+
+// 加载 jsQR 到全局（qr-decoder.js 依赖它）
+global.jsQR = require('../src/lib/jsQR.js');
+
+// 在全局作用域中加载 qr-decoder.js，使所有函数全局可用
+const qrDecoderCode = fs.readFileSync(path.join(__dirname, '../src/lib/qr-decoder.js'), 'utf-8');
+vm.runInThisContext(qrDecoderCode);
+
+test('extractRegion 应正确裁剪子区域', () => {
+  const src = new Uint8ClampedArray([
+    1, 1, 1, 1,  2, 2, 2, 2,  3, 3, 3, 3,
+    4, 4, 4, 4,  5, 5, 5, 5,  6, 6, 6, 6,
+    7, 7, 7, 7,  8, 8, 8, 8,  9, 9, 9, 9
+  ]);
+  const region = extractRegion(src, 3, 3, 1, 1, 2, 2);
+  assert.deepStrictEqual(
+    Array.from(region),
+    [5, 5, 5, 5,  6, 6, 6, 6,  8, 8, 8, 8,  9, 9, 9, 9]
+  );
+});
+
+test('extractRegion 超出边界应返回 null', () => {
+  const src = new Uint8ClampedArray(36);
+  assert.strictEqual(extractRegion(src, 3, 3, 2, 2, 2, 2), null);
+});
+
+test('eraseQRRegion 应正确涂白区域', () => {
+  const data = new Uint8ClampedArray(36);
+  // 3x3 全黑
+  for (let i = 0; i < 36; i += 4) {
+    data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
+  }
+  const location = {
+    topLeftCorner: { x: 0.5, y: 0.5 },
+    topRightCorner: { x: 1.5, y: 0.5 },
+    bottomRightCorner: { x: 1.5, y: 1.5 },
+    bottomLeftCorner: { x: 0.5, y: 1.5 }
+  };
+  eraseQRRegion(data, location, 3, 3, 0);
+  // 中心像素 (1,1) 应被涂白
+  const idx = (1 * 3 + 1) * 4;
+  assert.strictEqual(data[idx], 255);
+  assert.strictEqual(data[idx + 1], 255);
+  assert.strictEqual(data[idx + 2], 255);
+  assert.strictEqual(data[idx + 3], 255);
+  // 右下角 (2,2) 在涂白范围外，不应被涂白
+  const farIdx = (2 * 3 + 2) * 4;
+  assert.strictEqual(data[farIdx], 0);
+});
+
+test('fastAdaptiveThreshold 黑白棋盘应保留边缘', () => {
+  const src = new Uint8ClampedArray(16);
+  // 2x2 棋盘：左上暗(0)，右上亮(255)，左下亮(255)，右下暗(0)
+  const pixels = [
+    [0, 0, 0, 255],
+    [255, 255, 255, 255],
+    [255, 255, 255, 255],
+    [0, 0, 0, 255]
+  ];
+  for (let i = 0; i < 4; i++) {
+    src.set(pixels[i], i * 4);
+  }
+  const imageData = new ImageData(src, 2, 2);
+  const result = fastAdaptiveThreshold(imageData, 3, 10);
+  // 左上暗像素：局部均值=128，阈值=118，gray=0<118 → 输出0（黑）
+  assert.strictEqual(result.data[0], 0);
+  assert.strictEqual(result.data[1], 0);
+  assert.strictEqual(result.data[2], 0);
+  // 右上亮像素：gray=255>118 → 输出255（白）
+  assert.strictEqual(result.data[4], 255);
+  assert.strictEqual(result.data[5], 255);
+  assert.strictEqual(result.data[6], 255);
+});
+
+test('fastAdaptiveThreshold 全白图像应输出全白', () => {
+  const src = new Uint8ClampedArray(16);
+  for (let i = 0; i < 16; i += 4) {
+    src[i] = 255; src[i + 1] = 255; src[i + 2] = 255; src[i + 3] = 255;
+  }
+  const imageData = new ImageData(src, 2, 2);
+  const result = fastAdaptiveThreshold(imageData, 3, 10);
+  // 全白：局部均值=255，阈值=245，所有像素 255>245 → 输出 255
+  assert.strictEqual(result.data[0], 255);
+  assert.strictEqual(result.data[4], 255);
+});
+
+test('truncate 函数应从 qr-decoder 全局加载', () => {
+  assert.strictEqual(typeof truncate, 'function');
+  assert.strictEqual(truncate('hello world', 5), 'hello…');
+  assert.strictEqual(truncate('hi', 5), 'hi');
+});
+
+/* ============================================================
    汇总
    ============================================================ */
 console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');

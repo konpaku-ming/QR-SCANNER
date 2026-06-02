@@ -52,6 +52,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
 
+  if (request.action === 'TRIGGER_SCAN') {
+    (async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab) {
+          sendResponse({ status: 'error', error: 'No active tab' });
+          return;
+        }
+        await triggerScan(tab.id);
+        sendResponse({ status: 'scanning' });
+      } catch (err) {
+        console.error('[QR SCANNER] Trigger scan failed:', err);
+        sendResponse({ status: 'error', error: err.message });
+      }
+    })();
+    return true;
+  }
+
   if (request.action === 'CAPTURE_REGION') {
     (async () => {
       try {
@@ -107,10 +125,10 @@ async function triggerScan(tabId) {
       format: 'png'
     });
 
-    // 2. 注入 jsQR 库
+    // 2. 注入 jsQR 和 qr-decoder
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ['src/lib/jsQR.js']
+      files: ['src/lib/qr-decoder.js', 'src/lib/jsQR.js']
     });
 
     // 3. 发送截图与扫描指令
@@ -148,7 +166,7 @@ async function triggerAutoScan(tabId) {
 
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ['src/lib/jsQR.js']
+      files: ['src/lib/qr-decoder.js', 'src/lib/jsQR.js']
     });
 
     await chrome.tabs.sendMessage(tabId, {
