@@ -17,6 +17,9 @@ Thumbs.db
 *.zip
 *.crx
 
+# Release builds
+dist/
+
 # Local env
 .env
 .env.local

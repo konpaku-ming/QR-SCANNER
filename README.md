@@ -20,13 +20,39 @@
 
 ## 安装
 
-### 开发者模式加载（本地安装）
+### 系统要求
 
-1. 打开 Edge 浏览器，地址栏输入 `edge://extensions/` 并回车。
-2. 打开左下角**开发者模式**开关。
-3. 点击**加载解压缩的扩展**按钮。
-4. 选择本仓库的根目录（包含 `manifest.json` 的文件夹）。
-5. 扩展图标将出现在浏览器工具栏中。
+- **浏览器**：Microsoft Edge（Chromium，88+）或 Google Chrome（88+）
+- **平台**：Windows / macOS / Linux
+- **权限**：`activeTab`、`clipboardRead`（用于剪贴板图片识别）
+
+### GitHub Releases 下载安装（推荐）
+
+1. 前往 [GitHub Releases](https://github.com/OWNER/REPO/releases) 页面
+2. 下载最新版本的 `qr-scanner-vX.X.X.zip`
+3. 解压到任意文件夹（如 `~/qr-scanner/`）
+4. Edge 浏览器打开 `edge://extensions/`，开启**开发者模式**
+5. 点击**加载解压缩的扩展**，选择解压后的文件夹
+
+> **注意**：由于本扩展使用 zxing-wasm（WebAssembly）作为解码引擎，需确保浏览器版本为 **Edge 88+** 或 **Chrome 88+**。
+
+### 开发者模式加载（本地源码）
+
+1. 克隆本仓库到本地
+2. Edge 浏览器打开 `edge://extensions/`，开启**开发者模式**
+3. 点击**加载解压缩的扩展**按钮
+4. 选择仓库根目录（包含 `manifest.json` 的文件夹）
+5. 扩展图标将出现在浏览器工具栏中
+
+### GitHub Releases 下载安装
+
+1. 前往 [GitHub Releases](https://github.com/OWNER/REPO/releases) 页面
+2. 下载最新版本的 `qr-scanner-vX.X.X.zip`
+3. 解压到任意文件夹（如 `~/qr-scanner/`）
+4. Edge 浏览器打开 `edge://extensions/`，开启**开发者模式**
+5. 点击**加载解压缩的扩展**，选择解压后的文件夹
+
+> **注意**：由于本扩展使用 zxing-wasm（WebAssembly）作为解码引擎，需确保浏览器版本为 **Edge 88+** 或 **Chrome 88+**。
 
 ### Edge 应用商店安装
 
