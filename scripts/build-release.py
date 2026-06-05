@@ -30,7 +30,7 @@ def should_include(rel_path: str) -> bool:
     # Exclude specific files
     excluded_files = [
         '.gitignore', '.gitattributes', '.editorconfig',
-        'Plan.md', 'CLAUDE.md',
+        'Plan.md', 'CLAUDE.md', 'RELEASE_TEMPLATE.md',
         'package.json', 'package-lock.json',
         '.env', '.env.local',
     ]
