@@ -1,7 +1,10 @@
 # QR SCANNER 引入 zxing-wasm 改造方案
 
-> 状态：草案（Draft）  
+> 状态：**已实施（Implemented）** ✅  
 > 目标：以 zxing-wasm 替换 jsQR 作为主力解码引擎，解决同图多二维码漏检问题，提升单码识别率与扫描速度。
+>
+> **实施日期**：2025-06-05  
+> **提交**：`6fb6f0e` feat: 引入 zxing-wasm 替换 jsQR 作为主力解码引擎
 
 ---
 
