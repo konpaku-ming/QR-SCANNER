@@ -74,10 +74,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const tab = await chrome.tabs.get(sender.tab.id);
-        await chrome.scripting.executeScript({
-          target: { tabId: sender.tab.id },
-          files: ['src/lib/jsQR.js']
-        });
         const screenshotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
           format: 'png'
         });
@@ -98,13 +94,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     console.log('[QR SCANNER] Context menu scan:', imageUrl);
 
     try {
-      // 注入 jsQR 库
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ['src/lib/jsQR.js']
-      });
-
       // 发送单图扫描指令给 Content Script
+      // 库文件已由 manifest content_scripts 自动加载，无需动态注入
       await chrome.tabs.sendMessage(tab.id, {
         action: 'SCAN_SINGLE_IMAGE',
         imageUrl
@@ -125,13 +116,8 @@ async function triggerScan(tabId) {
       format: 'png'
     });
 
-    // 2. 注入 jsQR 和 qr-decoder
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['src/lib/qr-decoder.js', 'src/lib/jsQR.js']
-    });
-
-    // 3. 发送截图与扫描指令
+    // 2. 发送截图与扫描指令
+    // 库文件（zxing-wasm, qr-engine, qr-decoder, jsQR）已由 manifest content_scripts 自动加载
     await chrome.tabs.sendMessage(tabId, {
       action: 'START_SCAN_SCREENSHOT',
       screenshotUrl
@@ -164,11 +150,7 @@ async function triggerAutoScan(tabId) {
       format: 'png'
     });
 
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['src/lib/qr-decoder.js', 'src/lib/jsQR.js']
-    });
-
+    // 库文件已由 manifest content_scripts 自动加载
     await chrome.tabs.sendMessage(tabId, {
       action: 'START_AUTO_SCAN_SCREENSHOT',
       screenshotUrl

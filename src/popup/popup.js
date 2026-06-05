@@ -9,6 +9,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusEl = document.getElementById('status');
   const historyList = document.getElementById('history-list');
 
+  // 预加载 zxing-wasm
+  QR_ENGINE.init().catch(() => {});
+
   // 初始化加载历史记录
   await loadHistory();
 
@@ -202,22 +205,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // 对 Data URL 图片进行二维码解码（复用 qr-decoder.js）
+  // 对 Data URL 图片进行二维码解码
   async function decodeImageDataUrl(dataUrl) {
-    return new Promise((resolve) => {
+    const img = await loadImage(dataUrl);
+    const results = await QR_ENGINE.decodeImage(img);
+    return results.length > 0 ? results.map((r) => r.data) : null;
+  }
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => {
-        try {
-          const results = decodeImage(img);
-          // qr-decoder.js 返回 {data, location}[]，popup 剪贴板只需要 data
-          resolve(results.length > 0 ? results.map((r) => r.data) : null);
-        } catch (err) {
-          console.error('[QR SCANNER] Decode error:', err);
-          resolve(null);
-        }
-      };
-      img.onerror = () => resolve(null);
-      img.src = dataUrl;
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
     });
   }
 

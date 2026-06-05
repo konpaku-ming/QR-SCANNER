@@ -75,32 +75,8 @@
 
   // 对单个图片进行二维码解码（legacy 单图扫描）
   async function decodeSingleImage(imgElement) {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-      canvas.width = imgElement.naturalWidth || imgElement.width;
-      canvas.height = imgElement.naturalHeight || imgElement.height;
-
-      // CORS 处理：如果图片跨域，drawImage 会污染 canvas
-      try {
-        ctx.drawImage(imgElement, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-        // 检查 jsQR 是否可用（由 background.js 动态注入）
-        if (typeof jsQR !== 'function') {
-          console.warn('[QR SCANNER] jsQR not loaded');
-          resolve(null);
-          return;
-        }
-
-        const code = jsQR(imageData.data, canvas.width, canvas.height);
-        resolve(code ? code.data : null);
-      } catch (err) {
-        // 常见于跨域图片
-        resolve(null);
-      }
-    });
+    const results = await QR_ENGINE.decodeImage(imgElement);
+    return results.length > 0 ? results[0].data : null;
   }
 
   // 在二维码位置渲染覆盖层
@@ -177,8 +153,8 @@
 
       console.log(`[QR SCANNER] Screenshot size: ${screenshotImg.width}x${screenshotImg.height}, DPR: ${dpr}`);
 
-      // 使用共享的 decodeImage 进行整图多二维码检测
-      const results = decodeImage(screenshotImg);
+      // 使用 QR_ENGINE 进行整图多二维码检测
+      const results = await QR_ENGINE.decodeImage(screenshotImg);
 
       if (results.length === 0) {
         showScanToast('未识别到二维码', 'warning');
@@ -324,30 +300,9 @@
   }
 
   // 对 Data URL 图片进行二维码解码
-  function decodeDataUrl(dataUrl) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        ctx.drawImage(img, 0, 0);
-        try {
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          if (typeof jsQR !== 'function') {
-            resolve(null);
-            return;
-          }
-          const code = jsQR(imageData.data, canvas.width, canvas.height);
-          resolve(code ? code.data : null);
-        } catch (err) {
-          resolve(null);
-        }
-      };
-      img.onerror = () => resolve(null);
-      img.src = dataUrl;
-    });
+  async function decodeDataUrl(dataUrl) {
+    const results = await QR_ENGINE.decodeImage(dataUrl);
+    return results.length > 0 ? results[0].data : null;
   }
 
   // 在页面上显示扫描结果 Toast
@@ -723,18 +678,13 @@
       canvas.height = sh;
       ctx.drawImage(screenshotImg, sx, sy, sw, sh, 0, 0, sw, sh);
 
-      if (typeof jsQR !== 'function') {
-        showScanToast('jsQR 未加载', 'error');
-        return;
-      }
-
       const imageData = ctx.getImageData(0, 0, sw, sh);
-      const code = jsQR(imageData.data, sw, sh);
+      const results = await QR_ENGINE.decodeImage(imageData);
 
-      if (code && code.data) {
-        showScanToast(`识别成功：${truncate(code.data, 40)}`, 'success');
-        showFloatingResult(code.data);
-        saveHistory(code.data);
+      if (results.length > 0) {
+        showScanToast(`识别成功：${truncate(results[0].data, 40)}`, 'success');
+        showFloatingResult(results[0].data);
+        saveHistory(results[0].data);
       } else {
         showScanToast('选区内未识别到二维码', 'warning');
       }
@@ -747,5 +697,7 @@
   // 只在主页面启动 MutationObserver，避免 iframe 中重复扫描
   if (window === window.top) {
     startMutationObserver();
+    // 预加载 zxing-wasm，避免首次扫描时的初始化延迟
+    QR_ENGINE.init().catch(() => {});
   }
 })();

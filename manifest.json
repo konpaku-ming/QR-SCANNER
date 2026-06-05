@@ -21,6 +21,8 @@
     {
       "matches": ["<all_urls>"],
       "js": [
+        "src/lib/zxing-wasm/zxing-wasm.iife.js",
+        "src/lib/qr-engine.js",
         "src/lib/qr-decoder.js",
         "src/lib/jsQR.js",
         "src/content_script.js"
@@ -51,5 +53,17 @@
       },
       "description": "切换扫描模式"
     }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/lib/zxing-wasm/zxing-wasm.iife.js",
+        "src/lib/zxing-wasm/*.wasm"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }
 }
