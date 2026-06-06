@@ -22,6 +22,7 @@
       "matches": ["<all_urls>"],
       "js": [
         "src/lib/zxing-wasm/zxing-wasm.iife.js",
+        "src/lib/qr-utils.js",
         "src/lib/qr-engine.js",
         "src/lib/qr-decoder.js",
         "src/lib/jsQR.js",

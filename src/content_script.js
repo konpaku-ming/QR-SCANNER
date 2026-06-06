@@ -6,6 +6,7 @@
 
   let isScanning = false;
   let overlays = [];
+  let currentSettings = QR_UTILS.mergeSettings();
 
   // 监听来自 Background 的消息
   // 注意：all_frames=true 后，iframe 中也会收到消息，
@@ -68,9 +69,9 @@
 
   // 收集页面中所有图片元素
   function collectImages() {
-    const imgs = Array.from(document.querySelectorAll('img'));
+    const imgs = document.querySelectorAll('img');
     // TODO: 增加 background-image 和 canvas 的收集
-    return imgs.filter((img) => img.width > 50 && img.height > 50);
+    return QR_UTILS.filterImagesBySize(imgs);
   }
 
   // 对单个图片进行二维码解码（legacy 单图扫描）
@@ -90,10 +91,12 @@
     overlay.title = '点击打开菜单：' + qrData;
 
     // 定位
-    overlay.style.top = `${window.scrollY + rect.top}px`;
-    overlay.style.left = `${window.scrollX + rect.left}px`;
-    overlay.style.width = `${rect.width}px`;
-    overlay.style.height = `${rect.height}px`;
+    const overlayRect = QR_UTILS.overlayRectFromElementRect(rect, window.scrollX, window.scrollY);
+    if (!overlayRect) return;
+    overlay.style.top = `${overlayRect.y}px`;
+    overlay.style.left = `${overlayRect.x}px`;
+    overlay.style.width = `${overlayRect.width}px`;
+    overlay.style.height = `${overlayRect.height}px`;
 
     // 点击事件：显示操作菜单
     overlay.addEventListener('click', (e) => {
@@ -112,10 +115,16 @@
     overlay.className = 'qrhunt-overlay';
     overlay.title = '点击打开菜单：' + qrData;
 
-    overlay.style.top = `${window.scrollY + y}px`;
-    overlay.style.left = `${window.scrollX + x}px`;
-    overlay.style.width = `${w}px`;
-    overlay.style.height = `${h}px`;
+    const overlayRect = QR_UTILS.overlayRectFromElementRect(
+      { left: x, top: y, width: w, height: h },
+      window.scrollX,
+      window.scrollY
+    );
+    if (!overlayRect) return;
+    overlay.style.top = `${overlayRect.y}px`;
+    overlay.style.left = `${overlayRect.x}px`;
+    overlay.style.width = `${overlayRect.width}px`;
+    overlay.style.height = `${overlayRect.height}px`;
 
     overlay.addEventListener('click', (e) => {
       e.preventDefault();
@@ -163,14 +172,12 @@
         for (const result of results) {
           if (result.location) {
             // 将截图中的像素坐标映射为页面 CSS 坐标
-            const loc = result.location;
-            const xs = [loc.topLeftCorner.x, loc.topRightCorner.x, loc.bottomRightCorner.x, loc.bottomLeftCorner.x];
-            const ys = [loc.topLeftCorner.y, loc.topRightCorner.y, loc.bottomRightCorner.y, loc.bottomLeftCorner.y];
-            const minX = Math.min(...xs) / dpr;
-            const maxX = Math.max(...xs) / dpr;
-            const minY = Math.min(...ys) / dpr;
-            const maxY = Math.max(...ys) / dpr;
-            renderOverlayAtRect(minX, minY, maxX - minX, maxY - minY, result.data);
+            const overlayRect = QR_UTILS.overlayRectFromQrLocation(result.location, dpr);
+            if (overlayRect) {
+              renderOverlayAtRect(overlayRect.x, overlayRect.y, overlayRect.width, overlayRect.height, result.data);
+            } else {
+              showFloatingResult(result.data);
+            }
           } else {
             showFloatingResult(result.data);
           }
@@ -198,17 +205,11 @@
 
   // 收集视口内可见的图片元素（至少部分可见）
   function collectImagesInViewport() {
-    const imgs = Array.from(document.querySelectorAll('img'));
-    return imgs.filter((img) => {
-      if (img.width <= 50 || img.height <= 50) return false;
-      const rect = img.getBoundingClientRect();
-      return (
-        rect.top < window.innerHeight &&
-        rect.bottom > 0 &&
-        rect.left < window.innerWidth &&
-        rect.right > 0
-      );
-    });
+    return QR_UTILS.filterImagesInViewport(
+      document.querySelectorAll('img'),
+      window.innerWidth,
+      window.innerHeight
+    );
   }
 
   // 更新扩展图标 Badge 计数
@@ -222,27 +223,18 @@
   // 保存扫描历史到 chrome.storage.local
   async function saveHistory(qrData) {
     try {
-      const MAX_HISTORY = 50;
-      const result = await chrome.storage.local.get(['qr_scanner_history']);
-      let history = result.qr_scanner_history || [];
+      const result = await chrome.storage.local.get([QR_UTILS.HISTORY_KEY]);
+      const history = QR_UTILS.upsertHistoryItem(
+        result[QR_UTILS.HISTORY_KEY],
+        qrData,
+        {
+          url: window.location.href,
+          title: document.title || ''
+        },
+        currentSettings
+      );
 
-      // 去重：移除相同 data 的旧记录
-      history = history.filter((item) => item.data !== qrData);
-
-      const newItem = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-        data: qrData,
-        url: window.location.href,
-        title: document.title || '',
-        timestamp: Date.now()
-      };
-      history.unshift(newItem);
-
-      if (history.length > MAX_HISTORY) {
-        history = history.slice(0, MAX_HISTORY);
-      }
-
-      await chrome.storage.local.set({ qr_scanner_history: history });
+      await chrome.storage.local.set({ [QR_UTILS.HISTORY_KEY]: history });
     } catch (err) {
       console.error('[QR SCANNER] Save history failed:', err);
     }
@@ -250,14 +242,14 @@
 
   // 右键菜单单图扫描
   async function scanSingleImage(imageUrl) {
-    const img = Array.from(document.querySelectorAll('img')).find((i) => i.src === imageUrl);
+    const img = findImageByUrl(imageUrl);
 
     if (img) {
       try {
         const result = await decodeSingleImage(img);
         if (result) {
           renderOverlay(img, result);
-          showScanToast(`识别成功：${truncate(result, 40)}`, 'success');
+          showScanToast(`识别成功：${QR_UTILS.truncate(result, 40)}`, 'success');
           saveHistory(result);
           updateBadge();
           return;
@@ -285,18 +277,26 @@
   async function scanSingleImageDataUrl(dataUrl, originalImageUrl) {
     const result = await decodeDataUrl(dataUrl);
     if (result) {
-      const img = Array.from(document.querySelectorAll('img')).find((i) => i.src === originalImageUrl);
+      const img = findImageByUrl(originalImageUrl);
       if (img) {
         renderOverlay(img, result);
       } else {
         showFloatingResult(result);
       }
-      showScanToast(`识别成功：${truncate(result, 40)}`, 'success');
+      showScanToast(`识别成功：${QR_UTILS.truncate(result, 40)}`, 'success');
       saveHistory(result);
       updateBadge();
     } else {
       showScanToast('未能识别出二维码', 'warning');
     }
+  }
+
+  function findImageByUrl(imageUrl) {
+    return QR_UTILS.findImageElementByUrl(
+      document.querySelectorAll('img'),
+      imageUrl,
+      document.baseURI
+    );
   }
 
   // 对 Data URL 图片进行二维码解码
@@ -339,14 +339,18 @@
     const actions = document.createElement('div');
     actions.className = 'qrhunt-menu-actions';
 
-    const btnOpen = document.createElement('button');
-    btnOpen.className = 'qrhunt-menu-btn primary';
-    btnOpen.textContent = '打开链接';
-    btnOpen.addEventListener('click', (e) => {
-      e.stopPropagation();
-      window.open(qrData, '_blank');
-      menu.remove();
-    });
+    const openUrl = QR_UTILS.getOpenableUrl(qrData, currentSettings);
+    if (openUrl) {
+      const btnOpen = document.createElement('button');
+      btnOpen.className = 'qrhunt-menu-btn primary';
+      btnOpen.textContent = '打开链接';
+      btnOpen.addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.open(openUrl, '_blank', 'noopener');
+        menu.remove();
+      });
+      actions.appendChild(btnOpen);
+    }
 
     const btnCopy = document.createElement('button');
     btnCopy.className = 'qrhunt-menu-btn secondary';
@@ -369,7 +373,6 @@
       menu.remove();
     });
 
-    actions.appendChild(btnOpen);
     actions.appendChild(btnCopy);
     actions.appendChild(btnClose);
 
@@ -413,13 +416,17 @@
     const actions = document.createElement('div');
     actions.className = 'qrhunt-menu-actions';
 
-    const btnOpen = document.createElement('button');
-    btnOpen.className = 'qrhunt-menu-btn primary';
-    btnOpen.textContent = '打开链接';
-    btnOpen.addEventListener('click', () => {
-      window.open(qrData, '_blank');
-      box.remove();
-    });
+    const openUrl = QR_UTILS.getOpenableUrl(qrData, currentSettings);
+    if (openUrl) {
+      const btnOpen = document.createElement('button');
+      btnOpen.className = 'qrhunt-menu-btn primary';
+      btnOpen.textContent = '打开链接';
+      btnOpen.addEventListener('click', () => {
+        window.open(openUrl, '_blank', 'noopener');
+        box.remove();
+      });
+      actions.appendChild(btnOpen);
+    }
 
     const btnCopy = document.createElement('button');
     btnCopy.className = 'qrhunt-menu-btn secondary';
@@ -436,18 +443,12 @@
     btnClose.textContent = '关闭';
     btnClose.addEventListener('click', () => box.remove());
 
-    actions.appendChild(btnOpen);
     actions.appendChild(btnCopy);
     actions.appendChild(btnClose);
 
     box.appendChild(content);
     box.appendChild(actions);
     document.body.appendChild(box);
-  }
-
-  function truncate(str, len) {
-    if (!str) return '';
-    return str.length > len ? str.slice(0, len) + '…' : str;
   }
 
   /* ============================================================
@@ -457,6 +458,7 @@
   let mutationObserver = null;
   let mutationScanTimer = null;
   let lastScanTime = 0;
+  let historyObserverInstalled = false;
   const MUTATION_SCAN_DELAY = 1500;
   const MIN_SCAN_INTERVAL = 3000;
 
@@ -467,7 +469,7 @@
     lastScanTime = Date.now();
 
     mutationObserver = new MutationObserver((mutations) => {
-      if (!shouldScanForMutations(mutations)) return;
+      if (!QR_UTILS.shouldScanForMutations(mutations, Node.ELEMENT_NODE)) return;
       debouncedAutoScan();
     });
 
@@ -488,20 +490,6 @@
     }
   }
 
-  // 判断 DOM 变化中是否包含值得扫描的新图片
-  function shouldScanForMutations(mutations) {
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.tagName === 'IMG' || (node.querySelector && node.querySelector('img'))) {
-            return true;
-          }
-        }
-      }
-    }
-    return false;
-  }
-
   // 防抖自动扫描：DOM 变化停止后延迟执行，并限制最小扫描间隔
   function debouncedAutoScan() {
     if (mutationScanTimer) {
@@ -512,13 +500,26 @@
       mutationScanTimer = null;
 
       const now = Date.now();
-      if (now - lastScanTime < MIN_SCAN_INTERVAL) {
+      const decision = QR_UTILS.getAutoScanDecision({
+        now,
+        lastScanTime,
+        minInterval: MIN_SCAN_INTERVAL,
+        documentHidden: document.hidden,
+        settings: currentSettings
+      });
+
+      if (!decision.shouldScan && decision.reason === 'too-frequent') {
         console.log('[QR SCANNER] Auto scan skipped: too frequent');
         return;
       }
 
-      if (document.hidden) {
+      if (!decision.shouldScan && decision.reason === 'hidden') {
         console.log('[QR SCANNER] Auto scan skipped: page hidden');
+        return;
+      }
+
+      if (!decision.shouldScan && decision.reason === 'disabled') {
+        console.log('[QR SCANNER] Auto scan skipped: disabled by settings');
         return;
       }
 
@@ -530,6 +531,9 @@
 
   // 监听浏览器路由变化（SPA 常用 history API）
   function observeHistoryChanges() {
+    if (historyObserverInstalled) return;
+    historyObserverInstalled = true;
+
     window.addEventListener('popstate', () => {
       console.log('[QR SCANNER] Route change detected (popstate)');
       debouncedAutoScan();
@@ -669,10 +673,19 @@
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-      const sx = Math.round(rect.left * dpr);
-      const sy = Math.round(rect.top * dpr);
-      const sw = Math.round(rect.width * dpr);
-      const sh = Math.round(rect.height * dpr);
+      const crop = QR_UTILS.clampRegionToImage(
+        rect,
+        dpr,
+        screenshotImg.width,
+        screenshotImg.height
+      );
+
+      if (!crop) {
+        showScanToast('选区超出截图范围或过小', 'warning');
+        return;
+      }
+
+      const { sx, sy, sw, sh } = crop;
 
       canvas.width = sw;
       canvas.height = sh;
@@ -682,7 +695,7 @@
       const results = await QR_ENGINE.decodeImage(imageData);
 
       if (results.length > 0) {
-        showScanToast(`识别成功：${truncate(results[0].data, 40)}`, 'success');
+        showScanToast(`识别成功：${QR_UTILS.truncate(results[0].data, 40)}`, 'success');
         showFloatingResult(results[0].data);
         saveHistory(results[0].data);
       } else {
@@ -694,9 +707,34 @@
     }
   }
 
+  async function loadSettings() {
+    try {
+      const result = await chrome.storage.local.get([QR_UTILS.SETTINGS_KEY]);
+      currentSettings = QR_UTILS.mergeSettings(result[QR_UTILS.SETTINGS_KEY]);
+    } catch (err) {
+      currentSettings = QR_UTILS.mergeSettings();
+    }
+    return currentSettings;
+  }
+
+  function applyAutoScanSetting() {
+    if (window !== window.top) return;
+    if (currentSettings.autoScanEnabled) {
+      startMutationObserver();
+    } else {
+      stopMutationObserver();
+    }
+  }
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local' || !changes[QR_UTILS.SETTINGS_KEY]) return;
+    currentSettings = QR_UTILS.mergeSettings(changes[QR_UTILS.SETTINGS_KEY].newValue);
+    applyAutoScanSetting();
+  });
+
   // 只在主页面启动 MutationObserver，避免 iframe 中重复扫描
   if (window === window.top) {
-    startMutationObserver();
+    loadSettings().then(() => applyAutoScanSetting());
     // 预加载 zxing-wasm，避免首次扫描时的初始化延迟
     QR_ENGINE.init().catch(() => {});
   }

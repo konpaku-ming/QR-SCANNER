@@ -10,7 +10,8 @@
     <p class="subtitle">网页二维码识别器</p>
 
     <button id="btn-scan" class="btn primary">扫描当前页面</button>
-    <button id="btn-region" class="btn primary">识别剪贴板</button>
+    <button id="btn-select-region" class="btn primary">框选页面区域</button>
+    <button id="btn-clipboard" class="btn primary">识别剪贴板</button>
     <button id="btn-clear" class="btn secondary">清除标记</button>
 
     <div id="status" class="status"></div>
@@ -26,11 +27,12 @@
     <hr />
 
     <div class="footer">
-      <a href="src/options/options.html" target="_blank">设置</a>
+      <a href="../options/options.html" target="_blank">设置</a>
     </div>
   </div>
 
   <script src="../lib/zxing-wasm/zxing-wasm.iife.js"></script>
+  <script src="../lib/qr-utils.js"></script>
   <script src="../lib/qr-engine.js"></script>
   <script src="../lib/qr-decoder.js"></script>
   <script src="../lib/jsQR.js"></script>

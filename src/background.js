@@ -1,6 +1,8 @@
 // Background Service Worker
 // 负责调度扫描任务、跨页面通信、上下文菜单和历史记录管理
 
+importScripts('lib/qr-utils.js');
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[QR SCANNER] Extension installed');
 
@@ -40,7 +42,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'UPDATE_BADGE') {
     chrome.action.setBadgeText({
-      text: request.count > 0 ? String(request.count) : '',
+      text: QR_UTILS.getBadgeText(request.count),
       tabId: sender.tab.id
     });
     chrome.action.setBadgeBackgroundColor({ color: '#0078d4' });

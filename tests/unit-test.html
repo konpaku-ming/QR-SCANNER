@@ -35,6 +35,7 @@
     style="display:none;"
   >
 
+  <script src="../src/lib/qr-utils.js"></script>
   <script src="../src/lib/jsQR.js"></script>
   <script src="../src/lib/qr-decoder.js"></script>
   <script>
@@ -67,15 +68,11 @@
        1. 字符串截断（与 content_script.js 中的 truncate 一致）
        ============================================================ */
     section('字符串截断 (truncate)');
-    function truncate(str, len) {
-      if (!str) return '';
-      return str.length > len ? str.slice(0, len) + '…' : str;
-    }
-    assert(truncate('hello world', 5) === 'hello…', '长字符串应截断并追加省略号');
-    assert(truncate('hi', 5) === 'hi', '短字符串应保持原样');
-    assert(truncate('', 5) === '', '空字符串应返回空');
-    assert(truncate(null, 5) === '', 'null 应返回空');
-    assert(truncate('abcde', 5) === 'abcde', '长度恰好等于阈值时不截断');
+    assert(QR_UTILS.truncate('hello world', 5) === 'hello…', '长字符串应截断并追加省略号');
+    assert(QR_UTILS.truncate('hi', 5) === 'hi', '短字符串应保持原样');
+    assert(QR_UTILS.truncate('', 5) === '', '空字符串应返回空');
+    assert(QR_UTILS.truncate(null, 5) === '', 'null 应返回空');
+    assert(QR_UTILS.truncate('abcde', 5) === 'abcde', '长度恰好等于阈值时不截断');
 
     /* ============================================================
        2. 截图坐标映射（与 content_script.js 中的公式一致）
@@ -124,8 +121,90 @@
       assert(sx >= canvasWidth, '完全在右侧外的元素 sx >= canvasWidth');
     })();
 
+    (function testOverlayRects() {
+      const elementRect = QR_UTILS.overlayRectFromElementRect(
+        { left: 10, top: 20, width: 80, height: 60 },
+        100,
+        200
+      );
+      assert(elementRect.x === 110 && elementRect.y === 220 && elementRect.width === 80 && elementRect.height === 60, 'overlayRectFromElementRect 应叠加滚动偏移');
+
+      const qrRect = QR_UTILS.overlayRectFromQrLocation({
+        topLeftCorner: { x: 20, y: 40 },
+        topRightCorner: { x: 120, y: 40 },
+        bottomRightCorner: { x: 120, y: 140 },
+        bottomLeftCorner: { x: 20, y: 140 }
+      }, 2);
+      assert(qrRect.x === 10 && qrRect.y === 20 && qrRect.width === 50 && qrRect.height === 50, 'overlayRectFromQrLocation 应按 DPR 映射坐标');
+    })();
+
     /* ============================================================
-       3. 图片过滤逻辑（与 content_script.js 中的 collectImagesInViewport 一致）
+       3. 共享工具函数（qr-utils）
+       ============================================================ */
+    section('共享工具函数 (qr-utils)');
+    (function testQrUtils() {
+      const defaults = QR_UTILS.mergeSettings({});
+      assert(defaults.autoScanEnabled === true, 'mergeSettings 应补齐 autoScanEnabled 默认值');
+      assert(defaults.maxHistoryItems === 50, 'mergeSettings 应补齐 maxHistoryItems 默认值');
+      assert(defaults.openOnlyHttpLinks === true, 'mergeSettings 应补齐 openOnlyHttpLinks 默认值');
+      assert(QR_UTILS.mergeSettings({ maxHistoryItems: 999 }).maxHistoryItems === 200, 'mergeSettings 应钳位历史记录上限');
+
+      const crop = QR_UTILS.clampRegionToImage(
+        { left: -10, top: 450, width: 100, height: 100 },
+        1,
+        500,
+        500
+      );
+      assert(crop && crop.sx === 0 && crop.sy === 450 && crop.sw === 90 && crop.sh === 50, 'clampRegionToImage 应钳位越界选区');
+      assert(QR_UTILS.clampRegionToImage({ left: 600, top: 0, width: 50, height: 50 }, 1, 500, 500) === null, '完全在截图外的选区应返回 null');
+
+      const img = { currentSrc: 'https://example.com/current.png', src: 'https://example.com/fallback.png' };
+      assert(QR_UTILS.findImageElementByUrl([img], 'https://example.com/current.png') === img, 'findImageElementByUrl 应匹配 currentSrc');
+      assert(QR_UTILS.getOpenableUrl('https://example.com') === 'https://example.com/', 'getOpenableUrl 应允许 HTTPS');
+      assert(QR_UTILS.getOpenableUrl('plain text') === null, 'getOpenableUrl 应拒绝普通文本');
+      assert(QR_UTILS.getOpenableUrl('javascript:alert(1)') === null, 'getOpenableUrl 应拒绝危险协议');
+      assert(QR_UTILS.getBadgeText(3) === '3' && QR_UTILS.getBadgeText(0) === '', 'getBadgeText 应正确生成 Badge 文本');
+    })();
+
+    section('SPA 与历史记录工具函数');
+    (function testSpaAndHistoryUtils() {
+      const mutations = [
+        { addedNodes: [{ nodeType: 1, tagName: 'DIV', querySelector: selector => selector === 'img' ? {} : null }] }
+      ];
+      assert(QR_UTILS.shouldScanForMutations(mutations) === true, '新增包含 img 的容器应触发自动扫描');
+      assert(QR_UTILS.shouldScanForMutations([{ addedNodes: [{ nodeType: 3 }] }]) === false, '文本节点不应触发自动扫描');
+
+      const disabled = QR_UTILS.getAutoScanDecision({
+        documentHidden: false,
+        settings: { autoScanEnabled: false },
+        now: 5000,
+        lastScanTime: 0,
+        minInterval: 3000
+      });
+      assert(disabled.shouldScan === false && disabled.reason === 'disabled', '自动扫描关闭时应跳过');
+
+      const ready = QR_UTILS.getAutoScanDecision({
+        documentHidden: false,
+        settings: { autoScanEnabled: true },
+        now: 7000,
+        lastScanTime: 3000,
+        minInterval: 3000
+      });
+      assert(ready.shouldScan === true && ready.reason === 'ready', '满足条件时应允许自动扫描');
+
+      const history = QR_UTILS.upsertHistoryItem(
+        [{ id: 'old', data: 'same', timestamp: 1 }],
+        'same',
+        { id: 'new', url: '剪贴板截图', now: 2000 },
+        { maxHistoryItems: 5 }
+      );
+      assert(history.length === 1 && history[0].id === 'new' && history[0].url === '剪贴板截图', 'upsertHistoryItem 应去重并更新顶部记录');
+      assert(QR_UTILS.deleteHistoryItem(history, 'new').length === 0, 'deleteHistoryItem 应删除指定记录');
+      assert(QR_UTILS.formatRelativeTime(1000, 1000 + 30 * 1000) === '刚刚', 'formatRelativeTime 应格式化刚刚');
+    })();
+
+    /* ============================================================
+       4. 图片过滤逻辑（与 content_script.js 中的 collectImagesInViewport 一致）
        ============================================================ */
     section('图片过滤逻辑');
     (function testImageFilter() {
@@ -154,25 +233,16 @@
         },
       ];
 
-      const filtered = mockImgs.filter((img) => {
-        if (img.width <= 50 || img.height <= 50) return false;
-        const rect = img.getBoundingClientRect();
-        return (
-          rect.top < vh &&
-          rect.bottom > 0 &&
-          rect.left < vw &&
-          rect.right > 0
-        );
-      });
+      const filtered = QR_UTILS.filterImagesInViewport(mockImgs, vw, vh);
 
       assert(filtered.length === 3, '应过滤掉小图和完全视口外图片，剩余 3 张');
-      assert(filtered[0].width === 100 && filtered[0].top === 10, '第一张是正常可见大图');
-      assert(filtered[1].width === 100 && filtered[1].top === 500, '第二张是底部部分可见大图');
-      assert(filtered[2].width === 60 && filtered[2].top === 500, '第三张是底部部分可见中图');
+      assert(filtered[0].width === 100 && filtered[0].getBoundingClientRect().top === 10, '第一张是正常可见大图');
+      assert(filtered[1].width === 100 && filtered[1].getBoundingClientRect().top === 500, '第二张是底部部分可见大图');
+      assert(filtered[2].width === 60 && filtered[2].getBoundingClientRect().top === 500, '第三张是底部部分可见中图');
     })();
 
     /* ============================================================
-       4. jsQR 解码（依赖网络加载测试图片）
+       5. jsQR 解码（依赖网络加载测试图片）
        ============================================================ */
     section('jsQR 解码');
     async function testJsQR() {
@@ -201,7 +271,7 @@
     }
 
     /* ============================================================
-       5. Toast DOM 操作
+       6. Toast DOM 操作
        ============================================================ */
     section('Toast DOM 操作');
     (function testToastLifecycle() {
@@ -219,7 +289,7 @@
     })();
 
     /* ============================================================
-       6. Data URL 解码逻辑（纯函数模拟）
+       7. Data URL 解码逻辑（纯函数模拟）
        ============================================================ */
     section('Data URL 解码模拟');
     (function testDecodeDataUrlLogic() {
@@ -243,7 +313,7 @@
     })();
 
     /* ============================================================
-       7. qr-decoder 纯函数
+       8. qr-decoder 纯函数
        ============================================================ */
     section('qr-decoder 纯函数');
 
@@ -306,7 +376,7 @@
     })();
 
     /* ============================================================
-       8. 汇总
+       9. 汇总
        ============================================================ */
     window.addEventListener('load', async () => {
       await testJsQR();

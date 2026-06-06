@@ -3,14 +3,18 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
   const btnScan = document.getElementById('btn-scan');
-  const btnRegion = document.getElementById('btn-region');
+  const btnSelectRegion = document.getElementById('btn-select-region');
+  const btnClipboard = document.getElementById('btn-clipboard');
   const btnClear = document.getElementById('btn-clear');
   const btnClearHistory = document.getElementById('btn-clear-history');
   const statusEl = document.getElementById('status');
   const historyList = document.getElementById('history-list');
+  let currentSettings = QR_UTILS.mergeSettings();
 
   // 预加载 zxing-wasm
   QR_ENGINE.init().catch(() => {});
+
+  await loadSettings();
 
   // 初始化加载历史记录
   await loadHistory();
@@ -24,7 +28,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  btnRegion.addEventListener('click', async () => {
+  btnSelectRegion.addEventListener('click', async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab) {
+        setStatus('没有可用的当前页面');
+        return;
+      }
+
+      await chrome.tabs.sendMessage(tab.id, { action: 'START_REGION_SELECT' });
+      setStatus('请在页面中拖拽选择区域');
+      setTimeout(() => window.close(), 500);
+    } catch (err) {
+      setStatus('当前页面无法框选');
+    }
+  });
+
+  btnClipboard.addEventListener('click', async () => {
     try {
       const items = await navigator.clipboard.read();
       let imageBlob = null;
@@ -82,7 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   btnClearHistory.addEventListener('click', async () => {
     if (!confirm('确定清空所有历史记录吗？')) return;
     try {
-      await chrome.storage.local.remove('qr_scanner_history');
+      await chrome.storage.local.remove(QR_UTILS.HISTORY_KEY);
       renderHistory([]);
       setStatus('历史记录已清空');
     } catch (err) {
@@ -90,10 +110,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  async function loadSettings() {
+    try {
+      const result = await chrome.storage.local.get([QR_UTILS.SETTINGS_KEY]);
+      currentSettings = QR_UTILS.mergeSettings(result[QR_UTILS.SETTINGS_KEY]);
+    } catch (err) {
+      currentSettings = QR_UTILS.mergeSettings();
+    }
+  }
+
   async function loadHistory() {
     try {
-      const result = await chrome.storage.local.get(['qr_scanner_history']);
-      renderHistory(result.qr_scanner_history || []);
+      const result = await chrome.storage.local.get([QR_UTILS.HISTORY_KEY]);
+      renderHistory(result[QR_UTILS.HISTORY_KEY] || []);
     } catch (err) {
       console.error('[QR SCANNER] Load history failed:', err);
       historyList.innerHTML = '<div class="history-empty">加载失败</div>';
@@ -107,8 +136,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // 只展示最近 5 条
-    history.slice(0, 5).forEach((item) => {
+    QR_UTILS.getRecentHistory(history, 5).forEach((item) => {
       const el = document.createElement('div');
       el.className = 'history-item';
 
@@ -122,17 +150,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const time = document.createElement('span');
       time.className = 'history-time';
-      time.textContent = formatTime(item.timestamp);
+      time.textContent = QR_UTILS.formatRelativeTime(item.timestamp);
 
       const actions = document.createElement('div');
       actions.className = 'history-actions';
 
-      const btnOpen = document.createElement('button');
-      btnOpen.className = 'btn-text';
-      btnOpen.textContent = '打开';
-      btnOpen.addEventListener('click', () => {
-        window.open(item.data, '_blank');
-      });
+      const openUrl = QR_UTILS.getOpenableUrl(item.data, currentSettings);
+      if (openUrl) {
+        const btnOpen = document.createElement('button');
+        btnOpen.className = 'btn-text';
+        btnOpen.textContent = '打开';
+        btnOpen.addEventListener('click', () => {
+          window.open(openUrl, '_blank', 'noopener');
+        });
+        actions.appendChild(btnOpen);
+      }
 
       const btnCopy = document.createElement('button');
       btnCopy.className = 'btn-text';
@@ -154,7 +186,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         await loadHistory();
       });
 
-      actions.appendChild(btnOpen);
       actions.appendChild(btnCopy);
       actions.appendChild(btnDelete);
 
@@ -169,23 +200,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function deleteHistoryItem(id) {
     try {
-      const result = await chrome.storage.local.get(['qr_scanner_history']);
-      let history = result.qr_scanner_history || [];
-      history = history.filter((item) => item.id !== id);
-      await chrome.storage.local.set({ qr_scanner_history: history });
+      const result = await chrome.storage.local.get([QR_UTILS.HISTORY_KEY]);
+      const history = QR_UTILS.deleteHistoryItem(result[QR_UTILS.HISTORY_KEY], id);
+      await chrome.storage.local.set({ [QR_UTILS.HISTORY_KEY]: history });
     } catch (err) {
       console.error('[QR SCANNER] Delete history item failed:', err);
     }
-  }
-
-  function formatTime(timestamp) {
-    const d = new Date(timestamp);
-    const now = new Date();
-    const diff = now - d;
-    if (diff < 60000) return '刚刚';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-    return `${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
   }
 
   function setStatus(text) {
@@ -224,26 +244,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 保存扫描历史（Popup 上下文直接使用 storage）
   async function saveHistoryItem(qrData) {
     try {
-      const MAX_HISTORY = 50;
-      const result = await chrome.storage.local.get(['qr_scanner_history']);
-      let history = result.qr_scanner_history || [];
+      const result = await chrome.storage.local.get([QR_UTILS.HISTORY_KEY]);
+      const history = QR_UTILS.upsertHistoryItem(
+        result[QR_UTILS.HISTORY_KEY],
+        qrData,
+        { url: '剪贴板截图' },
+        currentSettings
+      );
 
-      history = history.filter((item) => item.data !== qrData);
-
-      const newItem = {
-        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-        data: qrData,
-        url: '剪贴板截图',
-        title: '',
-        timestamp: Date.now()
-      };
-      history.unshift(newItem);
-
-      if (history.length > MAX_HISTORY) {
-        history = history.slice(0, MAX_HISTORY);
-      }
-
-      await chrome.storage.local.set({ qr_scanner_history: history });
+      await chrome.storage.local.set({ [QR_UTILS.HISTORY_KEY]: history });
     } catch (err) {
       console.error('[QR SCANNER] Save history failed:', err);
     }

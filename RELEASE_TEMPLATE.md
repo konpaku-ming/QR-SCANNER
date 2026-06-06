@@ -32,12 +32,13 @@
 
 - **浏览器**：Microsoft Edge（Chromium 内核，88+）或 Google Chrome（88+）
 - **平台**：Windows / macOS / Linux
-- **权限**：`activeTab`, `clipboardRead`
+- **权限**：`activeTab`, `scripting`, `storage`, `contextMenus`, `tabs`, `clipboardRead`
 
 ### 已知问题
 
 - 浏览器内置页面（`edge://`、`chrome://`）无法扫描
 - 视口外的二维码需先滚动到可见区域再扫描
+- 自动扫描仅监听当前可见区域，不会扫描完整长页面
 
 ### 文件校验
 

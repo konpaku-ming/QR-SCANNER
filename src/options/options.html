@@ -4,25 +4,88 @@
   <meta charset="UTF-8" />
   <title>QR SCANNER 设置</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       max-width: 600px;
       margin: 40px auto;
       padding: 0 20px;
       color: #333;
+      background: #fff;
     }
-    h1 { font-size: 24px; margin-bottom: 16px; }
+
+    h1 {
+      font-size: 24px;
+      margin-bottom: 24px;
+    }
+
     .setting {
-      margin-bottom: 20px;
+      padding: 16px 0;
+      border-bottom: 1px solid #e5e5e5;
     }
+
     label {
-      display: block;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
       font-weight: 600;
       margin-bottom: 6px;
     }
+
+    input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+    }
+
+    input[type="number"] {
+      width: 96px;
+      padding: 6px 8px;
+      border: 1px solid #c8c8c8;
+      border-radius: 4px;
+      font: inherit;
+    }
+
     .hint {
       font-size: 12px;
       color: #666;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    button {
+      padding: 8px 14px;
+      border: none;
+      border-radius: 4px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .primary {
+      background: #0078d4;
+      color: #fff;
+    }
+
+    .secondary {
+      background: #f3f3f3;
+      color: #333;
+    }
+
+    #status {
+      min-height: 20px;
+      margin-top: 16px;
+      color: #0078d4;
+      font-size: 13px;
     }
   </style>
 </head>
@@ -30,15 +93,37 @@
   <h1>QR SCANNER 设置</h1>
 
   <div class="setting">
-    <label>自动扫描模式</label>
-    <p class="hint">暂不支持，将在后续版本上线。</p>
+    <label for="auto-scan-enabled">
+      <span>自动扫描模式</span>
+      <input id="auto-scan-enabled" type="checkbox" />
+    </label>
+    <p class="hint">开启后，页面新增图片或 SPA 路由变化时会自动重扫当前可见区域。</p>
   </div>
 
   <div class="setting">
-    <label>扫描历史记录</label>
-    <p class="hint">最多保留 50 条记录。</p>
+    <label for="max-history-items">
+      <span>历史记录保留数量</span>
+      <input id="max-history-items" type="number" min="1" max="200" step="1" />
+    </label>
+    <p class="hint">可设置 1 到 200 条，超出后保留最新记录。</p>
   </div>
 
+  <div class="setting">
+    <label for="open-only-http-links">
+      <span>仅打开 HTTP/HTTPS 链接</span>
+      <input id="open-only-http-links" type="checkbox" />
+    </label>
+    <p class="hint">开启后，普通文本或非网页链接只提供复制，不显示打开入口。</p>
+  </div>
+
+  <div class="actions">
+    <button id="btn-save" class="primary">保存设置</button>
+    <button id="btn-reset" class="secondary">恢复默认</button>
+  </div>
+
+  <div id="status"></div>
+
+  <script src="../lib/qr-utils.js"></script>
   <script src="options.js"></script>
 </body>
 </html>

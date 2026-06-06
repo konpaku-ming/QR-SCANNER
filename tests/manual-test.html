@@ -80,25 +80,44 @@
 
   <h2>4. 右键菜单单图扫描</h2>
   <div class="section">
-    <p>右键点击以下图片，选择「扫描此图片中的二维码」。</p>
-    <p class="expect">预期：弹出 Toast「识别成功」，并在图片上出现高亮 Overlay。点击 Overlay 应弹出操作菜单（打开链接 / 复制 / 关闭）。</p>
+    <p>右键点击以下图片，选择「扫描此图片中的二维码」。第二张图片带有 <code>srcset</code>，用于验证 URL 匹配兼容性。</p>
+    <p class="expect">预期：弹出 Toast「识别成功」，并在被右键点击的图片上出现高亮 Overlay。点击 Overlay 应弹出操作菜单。</p>
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=right-click-test" alt="Right click test">
+    <img
+      src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=right-click-src"
+      srcset="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=right-click-srcset 1x"
+      alt="Right click srcset test"
+    >
   </div>
 
-  <h2>5. 操作菜单交互</h2>
+  <h2>5. 网页框选区域识别</h2>
+  <div class="section">
+    <p>点击 Popup「框选页面区域」，然后拖拽框选下方二维码。</p>
+    <p class="expect">预期：页面出现选区遮罩；框选后弹出识别结果。按 ESC 应取消框选并移除遮罩。</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=region-select-test" alt="Region select test">
+  </div>
+
+  <h2>6. 剪贴板截图识别</h2>
+  <div class="section">
+    <p>先用系统截图工具截取一个二维码到剪贴板，再点击 Popup「识别剪贴板」。</p>
+    <p class="expect">预期：Popup 显示识别结果数量，并在最近识别中新增记录。</p>
+  </div>
+
+  <h2>7. 操作菜单交互</h2>
   <div class="section">
     <p>扫描下方二维码后，点击蓝色高亮框测试菜单。</p>
-    <p class="expect">预期：弹出菜单包含「打开链接」「复制」「关闭」。点击「复制」后页面顶部出现绿色 Toast「已复制到剪贴板」。点击页面空白处菜单消失。</p>
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=menu-interaction-test" alt="Menu test">
+    <p class="expect">预期：链接型内容显示「打开链接」「复制」「关闭」；普通文本只显示复制和关闭。点击页面空白处菜单消失。</p>
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://example.com/menu-interaction-test" alt="Menu link test">
+    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=menu-interaction-text" alt="Menu text test">
   </div>
 
-  <h2>6. 清除标记</h2>
+  <h2>8. 清除标记</h2>
   <div class="section">
     <p>扫描任意区域后，点击 Popup「清除标记」。</p>
     <p class="expect">预期：所有 Overlay 和操作菜单消失，Badge 数字清零。</p>
   </div>
 
-  <h2>7. 视口外二维码（需滚动）</h2>
+  <h2>9. 视口外二维码（需滚动）</h2>
   <div class="scroll-target">
     <div>
       <p>滚动到此区域后，再执行扫描。</p>
@@ -107,9 +126,9 @@
     </div>
   </div>
 
-  <h2>8. SPA 动态监听测试</h2>
+  <h2>10. SPA 动态监听测试</h2>
   <div class="section">
-    <p>前往 <a href="e2e-spa.html">SPA 端到端测试页</a>，测试 MutationObserver 和自动重扫功能。</p>
+    <p>在设置页开启「自动扫描模式」后，前往 <a href="e2e-spa.html">SPA 端到端测试页</a>，测试 MutationObserver 和自动重扫功能。</p>
     <p class="expect">预期：路由切换（点击导航按钮）或插入动态二维码后，扩展应自动重新扫描，且已有 Overlay 不会被清除。</p>
   </div>
 </body>
