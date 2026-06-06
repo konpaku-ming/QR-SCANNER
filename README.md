@@ -1,151 +1,187 @@
 # QR SCANNER
 
-> 一键识别网页、框选区域与剪贴板截图中的二维码，自动高亮、复制或安全打开。
+> 在当前页面可见区域或剪贴板图片中识别二维码，并在本地完成解码。
 
-QR SCANNER 是一款专为 Microsoft Edge 和 Chrome 打造的二维码识别扩展。它通过**当前视口截图**识别网页可见区域中的二维码，也支持**框选页面区域**和**剪贴板截图识别**。无论二维码来自网页图片、CSS 背景、Canvas、PDF 截图、桌面应用还是聊天记录，只要能显示在屏幕上，就可以在本地完成识别。
+QR SCANNER 是一个 Manifest V3 浏览器扩展，适用于 Microsoft Edge 和 Google Chrome。当前版本的二维码识别入口严格限定为两个：
 
----
+- **扫描当前页面**
+- **识别剪贴板**
 
-## ✨ 核心亮点
-
-| 亮点 | 说明 |
-|------|------|
-| 🔍 **当前视口扫描** | 一键截取当前可见区域，识别页面中可见的**全部二维码**，不依赖图片标签或跨域 Canvas 读取 |
-| 🎯 **框选区域识别** | 在网页内拖拽框选二维码区域，适合复杂页面、局部内容和边缘位置二维码 |
-| 📋 **剪贴板截图识别** | `Win+Shift+S` 截图后，点击即可识别剪贴板中的二维码，**无需保存图片** |
-| 🎯 **同图多码** | 一张截图中含有多个二维码？全部识别，无一遗漏 |
-| ⚙️ **可配置行为** | 设置页支持自动扫描开关、历史记录数量和安全打开策略 |
-| ⚡ **WASM 解码** | 基于 zxing-cpp WebAssembly 工业级解码引擎，优先使用原生多码检测 |
-| 🔒 **完全离线** | 所有识别均在本地完成，**不上传任何数据**，无需联网 |
+除此之外，扩展只保留必要的辅助能力：清除页面标记、查看最近记录、复制结果、安全打开链接和基础设置。运行时只使用本地打包的 **zxing-wasm**，不会加载 `jsQR`、`qr-decoder` 或其他第二解码器。
 
 ---
 
-## 🚀 快速开始
+## 功能
 
-### 安装
+| 功能 | 当前实现 |
+|------|----------|
+| 扫描当前页面 | 截取当前标签页的可见视口，识别截图中的二维码，并在页面上绘制蓝色高亮框 |
+| 识别剪贴板 | 读取剪贴板中的图片，识别二维码内容，并写入最近记录 |
+| 清除标记 | 清除页面上的蓝色高亮框、菜单、提示和 Badge；同时取消旧扫描继续绘制 |
+| 最近记录 | 结果保存在 `chrome.storage.local`，可打开、复制、删除或清空 |
+| 安全打开 | 默认只对 HTTP/HTTPS 内容显示打开入口，其他内容只提供复制 |
+| 设置 | 支持配置历史记录保留数量和是否仅打开 HTTP/HTTPS 链接 |
 
-**系统要求**：Microsoft Edge 88+ / Google Chrome 88+（Windows / macOS / Linux）
+明确不包含：
 
-#### 方式一：GitHub Releases 下载（推荐）
-
-1. 前往 [Releases](https://github.com/OWNER/REPO/releases) 页面，下载最新版 `qr-scanner-vX.X.X.zip`
-2. 解压到任意文件夹
-3. Edge 地址栏输入 `edge://extensions/`，开启**开发者模式**
-4. 点击**加载解压缩的扩展**，选择解压后的文件夹
-
-#### 方式二：Edge 加载项商店
-
-> 暂未上架，上架后可直接搜索 "QR SCANNER" 安装。
-
----
-
-## 📖 使用指南
-
-### 1️⃣ 扫描当前网页
-
-点击工具栏上的 **QR SCANNER** 图标 → 点击**扫描当前页面**。
-
-扩展会自动截取当前可见区域，识别其中的**全部二维码**，并在每个二维码位置生成蓝色脉冲高亮框。扩展图标右上角会显示识别到的数量。
-
-点击高亮框，即可选择**打开链接**或**复制内容**。
-
-如果二维码内容不是 `http://` 或 `https://` 链接，默认只提供复制，不显示打开入口。
-
-> 💡 快捷键：`Alt + Shift + Q`（可在 `edge://extensions/shortcuts` 中自定义）
-
-### 2️⃣ 框选页面区域
-
-适合识别页面局部内容、边缘二维码或复杂排版中的二维码：
-
-1. 点击工具栏上的 **QR SCANNER** 图标
-2. 点击**框选页面区域**
-3. 在网页上拖拽选择二维码所在区域
-4. 扩展识别选区截图并显示结果
-
-按 `Esc` 可以取消框选。
-
-### 3️⃣ 识别剪贴板截图
-
-适合识别**任意屏幕内容**中的二维码：
-
-1. 按 `Win + Shift + S`（Windows）或 `Cmd + Shift + 4`（macOS）截取二维码区域
-2. 点击工具栏上的 **QR SCANNER** 图标
-3. 点击**识别剪贴板**
-4. 扩展自动读取剪贴板图片，识别其中含有的**全部二维码**
-5. 识别结果保存到历史记录，支持一键打开或复制
-
-> **适用场景**：PDF 文件、桌面应用、其他浏览器窗口、聊天记录……任何能截图的内容。
-
-### 4️⃣ 右键扫描单张图片
-
-在网页上**右键点击**任意图片 → 选择**"扫描此图片中的二维码"**。
-
-扩展会优先定位被点击的图片元素，兼容 `currentSrc`、`src`、相对 URL 和部分 `srcset` 场景；如果直接读取受跨域限制，会通过后台获取图片后再解码。
-
-### 5️⃣ 设置与清除标记
-
-设置页当前支持：
-
-- 自动扫描模式：页面新增图片或 SPA 路由变化后自动重扫当前可见区域
-- 历史记录保留数量：1 到 200 条
-- 仅打开 HTTP/HTTPS 链接：默认开启，降低误开非网页内容的风险
-
-扫描完成后，点击 Popup 中的**清除标记**按钮，即可一键移除页面上所有高亮框。
+- 框选页面区域识别
+- 右键图片识别
+- 自动扫描或 SPA 变更后自动重扫
+- 非 zxing-wasm 的二维码解析回退路径
 
 ---
 
-## 🛡️ 隐私与安全
+## 使用
 
-- **纯本地运行**：二维码图像仅在浏览器本地内存中解码，**不上传至任何服务器**
-- **无需联网**：zxing-wasm 解码引擎打包在扩展内部，离线也能正常使用
-- **无数据收集**：不使用任何分析、统计或远程 API
-- **安全打开**：默认仅对 `http:` / `https:` 内容显示“打开链接”，普通文本和危险协议只提供复制
-- **权限用途明确**：`activeTab`/`tabs` 用于当前页截图扫描，`storage` 用于设置和历史记录，`contextMenus` 用于右键图片扫描，`clipboardRead` 用于剪贴板截图识别，`<all_urls>` 用于在普通网页中加载 content script
+### 扫描当前页面
 
----
+1. 打开包含二维码的网页，并确保二维码位于当前可见视口内。
+2. 点击扩展 Popup 中的 **扫描当前页面**，或使用快捷键 `Alt + Shift + Q`。
+3. 扩展会截取当前可见视口并调用 zxing-wasm 解码。
+4. 识别到带定位信息的二维码时，页面会出现蓝色高亮框。
+5. 点击高亮框，可选择打开链接、复制内容或关闭菜单。
 
-## ⚠️ 已知限制
+### 识别剪贴板
 
-| 限制 | 说明 |
-|------|------|
-| **视口范围** | 只能识别当前屏幕可见区域内的二维码。如需识别页面下方的二维码，请先滚动到目标区域再扫描。 |
-| **浏览器内置页面** | `edge://`、`chrome://`、`about:` 等浏览器内部页面（包括内置 PDF 查看器）无法扫描。如需识别 PDF 中的二维码，请使用「识别剪贴板」功能截图后识别。 |
-| **图像质量** | 过于模糊、压缩失真、尺寸过小或被严重遮挡的二维码可能无法识别。 |
-| **自动扫描范围** | 自动扫描只在设置开启时监听新增图片和 SPA 路由变化，并扫描当前可见区域，不会扫描完整长页面。 |
+1. 使用系统截图工具把二维码截图放入剪贴板，例如 Windows 的 `Win + Shift + S`。
+2. 点击 Popup 中的 **识别剪贴板**。
+3. 识别结果会写入最近记录，可在 Popup 中打开或复制。
 
----
+### 清除标记
 
-## 🧩 技术栈
-
-- **扩展规范**：Manifest V3
-- **解码引擎**：[zxing-wasm](https://github.com/Sec-ant/zxing-wasm)（ZXing-C++ WebAssembly，原生多码检测）
-- **Fallback**：jsQR + 自研贪心涂白/滑动窗口策略
-- **共享逻辑**：`src/lib/qr-utils.js`（设置合并、URL 安全判断、图片 URL 匹配、选区裁剪钳位）
-- **存储**：`chrome.storage.local`（设置与最近识别记录）
-- **构建工具**：无（纯 Vanilla JS，零依赖）
+点击 Popup 中的 **清除标记**。content script 会移除 `.qrhunt-overlay`、`.qrhunt-menu`、`.qrhunt-toast`，清空页面 Badge，并通过 `scanToken` 阻止仍在进行的旧扫描把蓝框重新画回页面。
 
 ---
 
-## 📌 当前状态
+## 解码实现
 
-- 核心扫描、框选区域、剪贴板识别、右键图片扫描、历史记录、设置页均已实现。
-- Node 单元测试覆盖核心纯函数、解码 fallback 辅助逻辑和共享工具函数。
-- 浏览器内端到端流程仍以 `tests/manual-test.html` 和 `tests/e2e-spa.html` 手动验证为主。
+解码入口统一为 `QR_ENGINE.decodeImage()`，位于 `src/lib/qr-engine.js`。该模块只调用当前打包的 zxing-wasm API：
+
+- `ZXingWASM.setZXingModuleOverrides()`
+- `ZXingWASM.getZXingModule()`
+- `ZXingWASM.readBarcodesFromImageData()`
+
+WASM 文件通过 `chrome.runtime.getURL('src/lib/zxing-wasm/...')` 定位，随扩展离线打包。
+
+### 多阶段策略
+
+当前页面扫描和剪贴板扫描共享同一套 zxing-wasm-only 多阶段策略：
+
+1. **快速整图扫描**：优先使用 `QRCode`、`tryHarder: false` 扫整张图；如果识别成功且有定位信息，立即返回。
+2. **增强整图扫描**：快速失败后启用 `tryHarder`，并加入 `MicroQRCode`。
+3. **尺寸自适应扫描**：对大图降采样，对极小图放大后再扫，坐标会映射回原图。
+4. **局部窗口扫描**：把图像切成重叠窗口逐块交给 zxing，降低多个二维码互相干扰的概率。
+5. **自适应阈值预处理**：对图像做局部二值化后，再执行整图与窗口扫描。
+
+默认模式为 `balanced`：一旦拿到带定位信息的结果，就停止更重的阶段，以兼顾速度和准确率。如果某阶段只识别出内容但没有定位信息，后续阶段会继续尝试补出可绘制蓝框的位置。
 
 ---
 
-## 📦 手动打包
+## 架构
 
-```bash
-python3 scripts/build-release.py v0.1.0
+```
+manifest.json
+src/
+  background.js            # 截图扫描调度、快捷键、Badge 更新
+  content_script.js        # 截图解码、Overlay 渲染、菜单与清除标记
+  popup/
+    popup.html
+    popup.js               # 两个识别入口、清除标记、历史记录
+  options/
+    options.html
+    options.js             # 历史条数和安全打开设置
+  lib/
+    qr-engine.js           # zxing-wasm-only 多阶段解码
+    qr-utils.js            # 设置、URL 安全、坐标映射、历史记录工具
+    zxing-wasm/
+      zxing-wasm.iife.js
+      zxing_reader.wasm
+styles/overlay.css
+assets/icons/
+tests/
+  node-unit-test.js
+  unit-test.html
+  manual-test.html
 ```
 
-输出 `dist/qr-scanner-v0.1.0.zip`，可直接上传至 GitHub Releases 或手动加载。
+### 当前页面扫描流程
+
+```
+Popup / Alt+Shift+Q
+  -> background.js
+  -> chrome.tabs.captureVisibleTab()
+  -> content_script.js START_SCAN_SCREENSHOT
+  -> QR_ENGINE.decodeImage()
+  -> zxing-wasm 多阶段解码
+  -> Overlay / 历史记录 / Badge
+```
+
+### 剪贴板扫描流程
+
+```
+Popup
+  -> navigator.clipboard.read()
+  -> 图片 Blob 转 Data URL
+  -> Image
+  -> QR_ENGINE.decodeImage()
+  -> 最近记录
+```
 
 ---
 
-## 📄 开源协议
+## 权限
 
-本项目开源，欢迎 Fork 和贡献。
+```json
+{
+  "permissions": ["activeTab", "storage", "tabs", "clipboardRead"],
+  "host_permissions": ["<all_urls>"]
+}
+```
 
-*本 README 与代码版本同步更新。*
+- `activeTab` / `tabs`：获取当前标签页并截取可见视口。
+- `storage`：保存设置和最近识别记录。
+- `clipboardRead`：读取剪贴板图片。
+- `<all_urls>`：在普通网页中注入 content script 并绘制 Overlay。
+
+---
+
+## 限制
+
+- 当前页面扫描只覆盖当前可见视口；视口外二维码需要先滚动到可见区域。
+- 浏览器内置页面如 `edge://`、`chrome://`、`about:` 无法注入 content script。
+- 模糊、遮挡、过小、压缩严重或对比度极低的二维码仍可能无法识别。
+- 剪贴板入口只处理图片，不会把剪贴板纯文本当作二维码内容处理。
+
+---
+
+## 开发与验证
+
+运行 Node 单元测试：
+
+```bash
+node tests/node-unit-test.js
+```
+
+浏览器测试页面：
+
+- `tests/unit-test.html`
+- `tests/manual-test.html`
+
+打包发布文件：
+
+```bash
+python3 scripts/build-release.py v0.2.0
+```
+
+输出文件为 `dist/qr-scanner-v0.2.0.zip`。
+
+---
+
+## 当前状态
+
+当前代码已经实现可用 MVP：
+
+- 两个识别入口完整可用。
+- 页面蓝框和清除标记逻辑已实现。
+- 解码链路为 zxing-wasm-only，并包含多阶段扫描策略。
+- Node 单元测试覆盖工具函数、产品边界、zxing 多阶段策略和打包约束。

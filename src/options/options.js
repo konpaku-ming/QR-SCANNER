@@ -2,7 +2,6 @@
 // 负责用户偏好设置的持久化
 
 (function init() {
-  const autoScanEnabled = document.getElementById('auto-scan-enabled');
   const maxHistoryItems = document.getElementById('max-history-items');
   const openOnlyHttpLinks = document.getElementById('open-only-http-links');
   const btnSave = document.getElementById('btn-save');
@@ -47,14 +46,12 @@
 
   function readSettingsFromForm() {
     return QR_UTILS.mergeSettings({
-      autoScanEnabled: autoScanEnabled.checked,
       maxHistoryItems: maxHistoryItems.value,
       openOnlyHttpLinks: openOnlyHttpLinks.checked
     });
   }
 
   function applySettings(settings) {
-    autoScanEnabled.checked = settings.autoScanEnabled;
     maxHistoryItems.value = String(settings.maxHistoryItems);
     openOnlyHttpLinks.checked = settings.openOnlyHttpLinks;
   }

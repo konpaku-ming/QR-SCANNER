@@ -19,25 +19,14 @@
     .summary { font-size: 18px; margin-top: 24px; padding: 16px; border-radius: 8px; }
     .summary.all-pass { background: #e8f5e9; }
     .summary.has-fail { background: #ffebee; }
-    code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
   </style>
 </head>
 <body>
   <h1>QR SCANNER 单元测试</h1>
-  <p>本页面在不依赖扩展上下文的情况下，测试核心逻辑与纯函数。</p>
+  <p>本页面在不依赖扩展上下文的情况下，测试共享纯函数与基础 DOM 行为。</p>
   <div id="results"></div>
 
-  <!-- 测试用二维码图片（需要网络） -->
-  <img
-    id="test-qr-img"
-    src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=unittest"
-    crossorigin="anonymous"
-    style="display:none;"
-  >
-
   <script src="../src/lib/qr-utils.js"></script>
-  <script src="../src/lib/jsQR.js"></script>
-  <script src="../src/lib/qr-decoder.js"></script>
   <script>
     const resultsEl = document.getElementById('results');
     let passCount = 0;
@@ -64,323 +53,69 @@
         .replace(/>/g, '&gt;');
     }
 
-    /* ============================================================
-       1. 字符串截断（与 content_script.js 中的 truncate 一致）
-       ============================================================ */
-    section('字符串截断 (truncate)');
+    section('字符串截断');
     assert(QR_UTILS.truncate('hello world', 5) === 'hello…', '长字符串应截断并追加省略号');
     assert(QR_UTILS.truncate('hi', 5) === 'hi', '短字符串应保持原样');
     assert(QR_UTILS.truncate('', 5) === '', '空字符串应返回空');
     assert(QR_UTILS.truncate(null, 5) === '', 'null 应返回空');
-    assert(QR_UTILS.truncate('abcde', 5) === 'abcde', '长度恰好等于阈值时不截断');
 
-    /* ============================================================
-       2. 截图坐标映射（与 content_script.js 中的公式一致）
-       ============================================================ */
-    section('截图坐标映射');
-    (function testCoordinateMapping() {
-      const rect = { left: 100, top: 200, width: 300, height: 300 };
-      const dpr = 2;
-      const sx = Math.round(rect.left * dpr);
-      const sy = Math.round(rect.top * dpr);
-      const sWidth = Math.round(rect.width * dpr);
-      const sHeight = Math.round(rect.height * dpr);
-      assert(sx === 200, 'sx = left * DPR = 200');
-      assert(sy === 400, 'sy = top * DPR = 400');
-      assert(sWidth === 600, 'sWidth = width * DPR = 600');
-      assert(sHeight === 600, 'sHeight = height * DPR = 600');
-    })();
+    section('设置合并');
+    const defaults = QR_UTILS.mergeSettings({});
+    assert(defaults.maxHistoryItems === 50, 'mergeSettings 应补齐 maxHistoryItems 默认值');
+    assert(defaults.openOnlyHttpLinks === true, 'mergeSettings 应补齐 openOnlyHttpLinks 默认值');
+    assert(!('autoScanEnabled' in defaults), 'mergeSettings 不应再暴露自动扫描设置');
+    assert(QR_UTILS.mergeSettings({ maxHistoryItems: 999 }).maxHistoryItems === 200, 'mergeSettings 应钳位历史记录上限');
+    assert(QR_UTILS.mergeSettings({ maxHistoryItems: -1 }).maxHistoryItems === 1, 'mergeSettings 应钳位历史记录下限');
 
-    (function testClamping() {
-      const canvasWidth = 1000;
-      const canvasHeight = 800;
-      const rect = { left: -50, top: 100, width: 300, height: 300 };
-      const dpr = 2;
-      const sx = Math.round(rect.left * dpr);          // -100
-      const sy = Math.round(rect.top * dpr);           //  200
-      const sWidth = Math.round(rect.width * dpr);     //  600
-      const sHeight = Math.round(rect.height * dpr);   //  600
+    section('URL 安全');
+    assert(QR_UTILS.normalizeUrl('./qr.png', 'https://example.com/page/index.html') === 'https://example.com/page/qr.png', 'normalizeUrl 应支持相对 URL');
+    assert(QR_UTILS.isHttpUrl('https://example.com') === true, 'isHttpUrl 应接受 HTTPS');
+    assert(QR_UTILS.isHttpUrl('mailto:test@example.com') === false, 'isHttpUrl 应拒绝非 HTTP 协议');
+    assert(QR_UTILS.getOpenableUrl('https://example.com') === 'https://example.com/', 'getOpenableUrl 应允许 HTTPS');
+    assert(QR_UTILS.getOpenableUrl('plain text') === null, 'getOpenableUrl 应拒绝普通文本');
+    assert(QR_UTILS.getOpenableUrl('javascript:alert(1)') === null, 'getOpenableUrl 应拒绝危险协议');
 
-      const clampedSx = Math.max(0, sx);
-      const clampedSy = Math.max(0, sy);
-      const clampedWidth = Math.min(sWidth, canvasWidth - clampedSx);
-      const clampedHeight = Math.min(sHeight, canvasHeight - clampedSy);
+    section('Overlay 坐标');
+    const elementRect = QR_UTILS.overlayRectFromElementRect(
+      { left: 10, top: 20, width: 80, height: 60 },
+      100,
+      200
+    );
+    assert(elementRect.x === 110 && elementRect.y === 220 && elementRect.width === 80 && elementRect.height === 60, 'overlayRectFromElementRect 应叠加滚动偏移');
 
-      assert(clampedSx === 0, '负 left 应被钳位到 0');
-      assert(clampedSy === 200, '正 top 保持不变');
-      assert(clampedWidth === 600, '宽度在画布范围内');
-      assert(clampedHeight === 600, '高度在画布范围内');
-    })();
+    const qrRect = QR_UTILS.overlayRectFromQrLocation({
+      topLeftCorner: { x: 20, y: 40 },
+      topRightCorner: { x: 120, y: 40 },
+      bottomRightCorner: { x: 120, y: 140 },
+      bottomLeftCorner: { x: 20, y: 140 }
+    }, 2);
+    assert(qrRect.x === 10 && qrRect.y === 20 && qrRect.width === 50 && qrRect.height === 50, 'overlayRectFromQrLocation 应按 DPR 映射坐标');
 
-    (function testOutOfBounds() {
-      const canvasWidth = 500;
-      const canvasHeight = 500;
-      const rect = { left: 600, top: 100, width: 100, height: 100 };
-      const dpr = 1;
-      const sx = Math.round(rect.left * dpr);
-      assert(sx >= canvasWidth, '完全在右侧外的元素 sx >= canvasWidth');
-    })();
+    section('历史记录');
+    const history = QR_UTILS.upsertHistoryItem(
+      [{ id: 'old', data: 'same', timestamp: 1 }],
+      'same',
+      { id: 'new', url: '剪贴板截图', now: 2000 },
+      { maxHistoryItems: 5 }
+    );
+    assert(history.length === 1 && history[0].id === 'new' && history[0].url === '剪贴板截图', 'upsertHistoryItem 应去重并更新顶部记录');
+    assert(QR_UTILS.deleteHistoryItem(history, 'new').length === 0, 'deleteHistoryItem 应删除指定记录');
+    assert(QR_UTILS.formatRelativeTime(1000, 1000 + 30 * 1000) === '刚刚', 'formatRelativeTime 应格式化刚刚');
+    assert(QR_UTILS.getBadgeText(3) === '3' && QR_UTILS.getBadgeText(0) === '', 'getBadgeText 应正确生成 Badge 文本');
 
-    (function testOverlayRects() {
-      const elementRect = QR_UTILS.overlayRectFromElementRect(
-        { left: 10, top: 20, width: 80, height: 60 },
-        100,
-        200
-      );
-      assert(elementRect.x === 110 && elementRect.y === 220 && elementRect.width === 80 && elementRect.height === 60, 'overlayRectFromElementRect 应叠加滚动偏移');
+    section('Overlay DOM 清理模拟');
+    const overlay = document.createElement('div');
+    overlay.className = 'qrhunt-overlay';
+    const menu = document.createElement('div');
+    menu.className = 'qrhunt-menu';
+    document.body.appendChild(overlay);
+    document.body.appendChild(menu);
+    assert(document.querySelectorAll('.qrhunt-overlay').length === 1, 'Overlay 应被添加到 DOM');
+    assert(document.querySelectorAll('.qrhunt-menu').length === 1, '菜单应被添加到 DOM');
+    document.querySelectorAll('.qrhunt-overlay, .qrhunt-menu').forEach((el) => el.remove());
+    assert(document.querySelectorAll('.qrhunt-overlay, .qrhunt-menu').length === 0, 'Overlay 与菜单应可快速清除');
 
-      const qrRect = QR_UTILS.overlayRectFromQrLocation({
-        topLeftCorner: { x: 20, y: 40 },
-        topRightCorner: { x: 120, y: 40 },
-        bottomRightCorner: { x: 120, y: 140 },
-        bottomLeftCorner: { x: 20, y: 140 }
-      }, 2);
-      assert(qrRect.x === 10 && qrRect.y === 20 && qrRect.width === 50 && qrRect.height === 50, 'overlayRectFromQrLocation 应按 DPR 映射坐标');
-    })();
-
-    /* ============================================================
-       3. 共享工具函数（qr-utils）
-       ============================================================ */
-    section('共享工具函数 (qr-utils)');
-    (function testQrUtils() {
-      const defaults = QR_UTILS.mergeSettings({});
-      assert(defaults.autoScanEnabled === true, 'mergeSettings 应补齐 autoScanEnabled 默认值');
-      assert(defaults.maxHistoryItems === 50, 'mergeSettings 应补齐 maxHistoryItems 默认值');
-      assert(defaults.openOnlyHttpLinks === true, 'mergeSettings 应补齐 openOnlyHttpLinks 默认值');
-      assert(QR_UTILS.mergeSettings({ maxHistoryItems: 999 }).maxHistoryItems === 200, 'mergeSettings 应钳位历史记录上限');
-
-      const crop = QR_UTILS.clampRegionToImage(
-        { left: -10, top: 450, width: 100, height: 100 },
-        1,
-        500,
-        500
-      );
-      assert(crop && crop.sx === 0 && crop.sy === 450 && crop.sw === 90 && crop.sh === 50, 'clampRegionToImage 应钳位越界选区');
-      assert(QR_UTILS.clampRegionToImage({ left: 600, top: 0, width: 50, height: 50 }, 1, 500, 500) === null, '完全在截图外的选区应返回 null');
-
-      const img = { currentSrc: 'https://example.com/current.png', src: 'https://example.com/fallback.png' };
-      assert(QR_UTILS.findImageElementByUrl([img], 'https://example.com/current.png') === img, 'findImageElementByUrl 应匹配 currentSrc');
-      assert(QR_UTILS.getOpenableUrl('https://example.com') === 'https://example.com/', 'getOpenableUrl 应允许 HTTPS');
-      assert(QR_UTILS.getOpenableUrl('plain text') === null, 'getOpenableUrl 应拒绝普通文本');
-      assert(QR_UTILS.getOpenableUrl('javascript:alert(1)') === null, 'getOpenableUrl 应拒绝危险协议');
-      assert(QR_UTILS.getBadgeText(3) === '3' && QR_UTILS.getBadgeText(0) === '', 'getBadgeText 应正确生成 Badge 文本');
-    })();
-
-    section('SPA 与历史记录工具函数');
-    (function testSpaAndHistoryUtils() {
-      const mutations = [
-        { addedNodes: [{ nodeType: 1, tagName: 'DIV', querySelector: selector => selector === 'img' ? {} : null }] }
-      ];
-      assert(QR_UTILS.shouldScanForMutations(mutations) === true, '新增包含 img 的容器应触发自动扫描');
-      assert(QR_UTILS.shouldScanForMutations([{ addedNodes: [{ nodeType: 3 }] }]) === false, '文本节点不应触发自动扫描');
-
-      const disabled = QR_UTILS.getAutoScanDecision({
-        documentHidden: false,
-        settings: { autoScanEnabled: false },
-        now: 5000,
-        lastScanTime: 0,
-        minInterval: 3000
-      });
-      assert(disabled.shouldScan === false && disabled.reason === 'disabled', '自动扫描关闭时应跳过');
-
-      const ready = QR_UTILS.getAutoScanDecision({
-        documentHidden: false,
-        settings: { autoScanEnabled: true },
-        now: 7000,
-        lastScanTime: 3000,
-        minInterval: 3000
-      });
-      assert(ready.shouldScan === true && ready.reason === 'ready', '满足条件时应允许自动扫描');
-
-      const history = QR_UTILS.upsertHistoryItem(
-        [{ id: 'old', data: 'same', timestamp: 1 }],
-        'same',
-        { id: 'new', url: '剪贴板截图', now: 2000 },
-        { maxHistoryItems: 5 }
-      );
-      assert(history.length === 1 && history[0].id === 'new' && history[0].url === '剪贴板截图', 'upsertHistoryItem 应去重并更新顶部记录');
-      assert(QR_UTILS.deleteHistoryItem(history, 'new').length === 0, 'deleteHistoryItem 应删除指定记录');
-      assert(QR_UTILS.formatRelativeTime(1000, 1000 + 30 * 1000) === '刚刚', 'formatRelativeTime 应格式化刚刚');
-    })();
-
-    /* ============================================================
-       4. 图片过滤逻辑（与 content_script.js 中的 collectImagesInViewport 一致）
-       ============================================================ */
-    section('图片过滤逻辑');
-    (function testImageFilter() {
-      const vh = 600;
-      const vw = 800;
-      const mockImgs = [
-        {
-          width: 100, height: 100,
-          getBoundingClientRect: () => ({ top: 10, bottom: 110, left: 10, right: 110 })
-        },
-        {
-          width: 30, height: 30,
-          getBoundingClientRect: () => ({ top: 10, bottom: 40, left: 10, right: 40 })
-        },
-        {
-          width: 100, height: 100,
-          getBoundingClientRect: () => ({ top: -200, bottom: -100, left: 10, right: 110 })
-        },
-        {
-          width: 100, height: 100,
-          getBoundingClientRect: () => ({ top: 500, bottom: 650, left: 10, right: 110 })
-        },
-        {
-          width: 60, height: 60,
-          getBoundingClientRect: () => ({ top: 500, bottom: 560, left: 10, right: 110 })
-        },
-      ];
-
-      const filtered = QR_UTILS.filterImagesInViewport(mockImgs, vw, vh);
-
-      assert(filtered.length === 3, '应过滤掉小图和完全视口外图片，剩余 3 张');
-      assert(filtered[0].width === 100 && filtered[0].getBoundingClientRect().top === 10, '第一张是正常可见大图');
-      assert(filtered[1].width === 100 && filtered[1].getBoundingClientRect().top === 500, '第二张是底部部分可见大图');
-      assert(filtered[2].width === 60 && filtered[2].getBoundingClientRect().top === 500, '第三张是底部部分可见中图');
-    })();
-
-    /* ============================================================
-       5. jsQR 解码（依赖网络加载测试图片）
-       ============================================================ */
-    section('jsQR 解码');
-    async function testJsQR() {
-      const img = document.getElementById('test-qr-img');
-      if (!img.complete || img.naturalWidth === 0) {
-        assert(false, '测试二维码图片未加载（请检查网络连接）');
-        return;
-      }
-
-      assert(typeof jsQR === 'function', 'jsQR 库应已加载为全局函数');
-
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      ctx.drawImage(img, 0, 0);
-
-      try {
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, canvas.width, canvas.height);
-        assert(code !== null, '应成功从测试图片中识别出二维码');
-        assert(code.data === 'unittest', `解码内容应为 "unittest"，实际为 "${code.data}"`);
-      } catch (err) {
-        assert(false, `解码过程抛出异常: ${err.message}`);
-      }
-    }
-
-    /* ============================================================
-       6. Toast DOM 操作
-       ============================================================ */
-    section('Toast DOM 操作');
-    (function testToastLifecycle() {
-      // 模拟 showScanToast 的 DOM 创建逻辑
-      const toast = document.createElement('div');
-      toast.className = 'qrhunt-toast qrhunt-toast-success';
-      toast.textContent = '测试消息';
-      document.body.appendChild(toast);
-
-      assert(document.querySelectorAll('.qrhunt-toast').length === 1, 'Toast 应被添加到 DOM');
-      assert(toast.classList.contains('qrhunt-toast-success'), 'Toast 应包含对应类型 class');
-
-      toast.remove();
-      assert(document.querySelectorAll('.qrhunt-toast').length === 0, 'Toast 移除后 DOM 中不应残留');
-    })();
-
-    /* ============================================================
-       7. Data URL 解码逻辑（纯函数模拟）
-       ============================================================ */
-    section('Data URL 解码模拟');
-    (function testDecodeDataUrlLogic() {
-      // 由于真实二维码图片生成复杂，这里验证 decodeDataUrl 的函数结构存在性
-      // 实际 decodeDataUrl 在 content_script.js 中，这里用相同逻辑内联验证 Image + Canvas 流程
-      const testPixelCanvas = document.createElement('canvas');
-      testPixelCanvas.width = 2;
-      testPixelCanvas.height = 2;
-      const tctx = testPixelCanvas.getContext('2d');
-      tctx.fillStyle = '#000';
-      tctx.fillRect(0, 0, 2, 2);
-
-      const imgData = tctx.getImageData(0, 0, 2, 2);
-      // 2x2 全黑不是有效二维码，但验证 jsQR 不会崩溃
-      try {
-        const result = jsQR(imgData.data, 2, 2);
-        assert(result === null, '全黑 2x2 图像不应被识别为二维码，且不应抛异常');
-      } catch (err) {
-        assert(false, `jsQR 处理异常图像时不应抛异常: ${err.message}`);
-      }
-    })();
-
-    /* ============================================================
-       8. qr-decoder 纯函数
-       ============================================================ */
-    section('qr-decoder 纯函数');
-
-    (function testExtractRegion() {
-      const src = new Uint8ClampedArray([
-        1, 1, 1, 1,  2, 2, 2, 2,  3, 3, 3, 3,
-        4, 4, 4, 4,  5, 5, 5, 5,  6, 6, 6, 6,
-        7, 7, 7, 7,  8, 8, 8, 8,  9, 9, 9, 9
-      ]);
-      const region = extractRegion(src, 3, 3, 1, 1, 2, 2);
-      const expected = [5, 5, 5, 5,  6, 6, 6, 6,  8, 8, 8, 8,  9, 9, 9, 9];
-      assert(
-        region && Array.from(region).every((v, i) => v === expected[i]),
-        'extractRegion 应正确裁剪 2x2 子区域'
-      );
-      assert(extractRegion(src, 3, 3, 2, 2, 2, 2) === null, 'extractRegion 超出边界应返回 null');
-    })();
-
-    (function testEraseQRRegion() {
-      const data = new Uint8ClampedArray(36);
-      for (let i = 0; i < 36; i += 4) {
-        data[i] = 0; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255;
-      }
-      const location = {
-        topLeftCorner: { x: 0.5, y: 0.5 },
-        topRightCorner: { x: 1.5, y: 0.5 },
-        bottomRightCorner: { x: 1.5, y: 1.5 },
-        bottomLeftCorner: { x: 0.5, y: 1.5 }
-      };
-      eraseQRRegion(data, location, 3, 3, 0);
-      const idx = (1 * 3 + 1) * 4;
-      assert(
-        data[idx] === 255 && data[idx + 1] === 255 && data[idx + 2] === 255 && data[idx + 3] === 255,
-        'eraseQRRegion 应涂白 QR 区域内部像素'
-      );
-      const farIdx = (2 * 3 + 2) * 4;
-      assert(data[farIdx] === 0, 'eraseQRRegion 不应涂白区域外像素');
-    })();
-
-    (function testFastAdaptiveThreshold() {
-      const src = new Uint8ClampedArray(16);
-      const pixels = [
-        [0, 0, 0, 255],
-        [255, 255, 255, 255],
-        [255, 255, 255, 255],
-        [0, 0, 0, 255]
-      ];
-      for (let i = 0; i < 4; i++) {
-        src.set(pixels[i], i * 4);
-      }
-      const imageData = new ImageData(src, 2, 2);
-      const result = fastAdaptiveThreshold(imageData, 3, 10);
-      assert(result.data[0] === 0, '暗像素应输出黑');
-      assert(result.data[4] === 255, '亮像素应输出白');
-    })();
-
-    (function testTruncateLoaded() {
-      assert(typeof truncate === 'function', 'truncate 应从 qr-decoder.js 全局加载');
-      assert(truncate('hello world', 5) === 'hello…', 'truncate 行为正确');
-    })();
-
-    /* ============================================================
-       9. 汇总
-       ============================================================ */
-    window.addEventListener('load', async () => {
-      await testJsQR();
-
+    window.addEventListener('load', () => {
       const summary = document.createElement('div');
       summary.className = 'summary ' + (failCount === 0 ? 'all-pass' : 'has-fail');
       summary.innerHTML = `

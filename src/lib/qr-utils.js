@@ -9,12 +9,11 @@
   root.QR_UTILS = utils;
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const SETTINGS_KEY = 'qr_scanner_settings';
+  const HISTORY_KEY = 'qr_scanner_history';
   const DEFAULT_SETTINGS = Object.freeze({
-    autoScanEnabled: true,
     maxHistoryItems: 50,
     openOnlyHttpLinks: true
   });
-  const HISTORY_KEY = 'qr_scanner_history';
 
   function clampNumber(value, min, max, fallback) {
     const number = Number(value);
@@ -25,9 +24,6 @@
   function mergeSettings(rawSettings) {
     const raw = rawSettings && typeof rawSettings === 'object' ? rawSettings : {};
     return {
-      autoScanEnabled: typeof raw.autoScanEnabled === 'boolean'
-        ? raw.autoScanEnabled
-        : DEFAULT_SETTINGS.autoScanEnabled,
       maxHistoryItems: clampNumber(
         raw.maxHistoryItems,
         1,
@@ -54,45 +50,6 @@
     }
   }
 
-  function getImageUrlCandidates(img) {
-    const candidates = [];
-    if (!img) return candidates;
-
-    if (img.currentSrc) candidates.push(img.currentSrc);
-    if (img.src) candidates.push(img.src);
-    if (typeof img.getAttribute === 'function') {
-      const attrSrc = img.getAttribute('src');
-      if (attrSrc) candidates.push(attrSrc);
-    }
-
-    return candidates;
-  }
-
-  function findImageElementByUrl(images, imageUrl, baseURI) {
-    const list = Array.from(images || []);
-    const target = typeof imageUrl === 'string' ? imageUrl : '';
-    if (!target) return null;
-
-    for (const img of list) {
-      const candidates = getImageUrlCandidates(img);
-      if (candidates.some((candidate) => candidate === target)) {
-        return img;
-      }
-    }
-
-    const normalizedTarget = normalizeUrl(target, baseURI);
-    if (!normalizedTarget) return null;
-
-    for (const img of list) {
-      const candidates = getImageUrlCandidates(img);
-      if (candidates.some((candidate) => normalizeUrl(candidate, baseURI) === normalizedTarget)) {
-        return img;
-      }
-    }
-
-    return null;
-  }
-
   function isHttpUrl(value) {
     const normalized = normalizeUrl(value);
     if (!normalized) return false;
@@ -116,69 +73,6 @@
     if (blockedProtocols.has(url.protocol)) return null;
 
     return url.href;
-  }
-
-  function clampRegionToImage(rect, dpr, imageWidth, imageHeight, minPixels = 20) {
-    if (!rect) return null;
-
-    const scale = Number.isFinite(Number(dpr)) && Number(dpr) > 0 ? Number(dpr) : 1;
-    const imgW = Math.round(Number(imageWidth));
-    const imgH = Math.round(Number(imageHeight));
-    const minSize = Math.max(1, Math.round(Number(minPixels) || 1));
-
-    if (!Number.isFinite(imgW) || !Number.isFinite(imgH) || imgW <= 0 || imgH <= 0) {
-      return null;
-    }
-
-    const left = Number(rect.left);
-    const top = Number(rect.top);
-    const width = Number(rect.width);
-    const height = Number(rect.height);
-
-    if (![left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
-      return null;
-    }
-
-    const rawLeft = Math.round(left * scale);
-    const rawTop = Math.round(top * scale);
-    const rawRight = Math.round((left + width) * scale);
-    const rawBottom = Math.round((top + height) * scale);
-
-    const sx = Math.min(Math.max(rawLeft, 0), imgW);
-    const sy = Math.min(Math.max(rawTop, 0), imgH);
-    const ex = Math.min(Math.max(rawRight, 0), imgW);
-    const ey = Math.min(Math.max(rawBottom, 0), imgH);
-    const sw = ex - sx;
-    const sh = ey - sy;
-
-    if (sw < minSize || sh < minSize) return null;
-
-    return { sx, sy, sw, sh };
-  }
-
-  function filterImagesBySize(images, minSize = 50) {
-    return Array.from(images || []).filter((img) => {
-      return Number(img && img.width) > minSize && Number(img && img.height) > minSize;
-    });
-  }
-
-  function filterImagesInViewport(images, viewportWidth, viewportHeight, minSize = 50) {
-    const vw = Number(viewportWidth);
-    const vh = Number(viewportHeight);
-    if (!Number.isFinite(vw) || !Number.isFinite(vh) || vw <= 0 || vh <= 0) {
-      return [];
-    }
-
-    return filterImagesBySize(images, minSize).filter((img) => {
-      if (!img || typeof img.getBoundingClientRect !== 'function') return false;
-      const rect = img.getBoundingClientRect();
-      return (
-        rect.top < vh &&
-        rect.bottom > 0 &&
-        rect.left < vw &&
-        rect.right > 0
-      );
-    });
   }
 
   function overlayRectFromElementRect(rect, scrollX = 0, scrollY = 0) {
@@ -229,37 +123,6 @@
       width: maxX - minX,
       height: maxY - minY
     };
-  }
-
-  function shouldScanForMutations(mutations, elementNodeType = 1) {
-    for (const mutation of Array.from(mutations || [])) {
-      for (const node of Array.from(mutation.addedNodes || [])) {
-        if (!node || node.nodeType !== elementNodeType) continue;
-        if (node.tagName === 'IMG') return true;
-        if (typeof node.querySelector === 'function' && node.querySelector('img')) return true;
-      }
-    }
-    return false;
-  }
-
-  function getAutoScanDecision(options = {}) {
-    const now = Number(options.now);
-    const lastScanTime = Number(options.lastScanTime) || 0;
-    const minInterval = Number(options.minInterval) || 0;
-
-    if (options.documentHidden) {
-      return { shouldScan: false, reason: 'hidden' };
-    }
-
-    if (!mergeSettings(options.settings).autoScanEnabled) {
-      return { shouldScan: false, reason: 'disabled' };
-    }
-
-    if (Number.isFinite(now) && now - lastScanTime < minInterval) {
-      return { shouldScan: false, reason: 'too-frequent' };
-    }
-
-    return { shouldScan: true, reason: 'ready' };
   }
 
   function createHistoryItem(qrData, context = {}) {
@@ -322,16 +185,10 @@
     mergeSettings,
     truncate,
     normalizeUrl,
-    findImageElementByUrl,
     isHttpUrl,
     getOpenableUrl,
-    clampRegionToImage,
-    filterImagesBySize,
-    filterImagesInViewport,
     overlayRectFromElementRect,
     overlayRectFromQrLocation,
-    shouldScanForMutations,
-    getAutoScanDecision,
     createHistoryItem,
     upsertHistoryItem,
     deleteHistoryItem,

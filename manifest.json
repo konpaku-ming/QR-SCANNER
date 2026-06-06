@@ -1,13 +1,11 @@
 {
   "manifest_version": 3,
   "name": "QR SCANNER",
-  "version": "0.1.0",
-  "description": "自动识别网页上的二维码，点击即可跳转",
+  "version": "0.2.0",
+  "description": "识别当前页面或剪贴板图片中的二维码",
   "permissions": [
     "activeTab",
-    "scripting",
     "storage",
-    "contextMenus",
     "tabs",
     "clipboardRead"
   ],
@@ -24,8 +22,6 @@
         "src/lib/zxing-wasm/zxing-wasm.iife.js",
         "src/lib/qr-utils.js",
         "src/lib/qr-engine.js",
-        "src/lib/qr-decoder.js",
-        "src/lib/jsQR.js",
         "src/content_script.js"
       ],
       "css": ["styles/overlay.css"],
@@ -52,7 +48,7 @@
       "suggested_key": {
         "default": "Alt+Shift+Q"
       },
-      "description": "切换扫描模式"
+      "description": "扫描当前页面"
     }
   },
   "web_accessible_resources": [

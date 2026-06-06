@@ -52,22 +52,22 @@
 <body>
   <h1>QR SCANNER 手动测试页</h1>
   <p class="note">
-    在 Edge 中加载扩展后，打开此页面，使用扩展的各项功能进行验证。<br>
+    在 Edge 或 Chrome 中加载扩展后，打开此页面验证当前实现。当前版本只有两个二维码识别入口：Popup「扫描当前页面」和「识别剪贴板」。<br>
     本页面引用的二维码图片来自 <code>api.qrserver.com</code>，需要网络连接。
   </p>
 
-  <h2>1. 基础识别 — 整图多二维码检测</h2>
+  <h2>1. 当前页面扫描 — 视口截图多二维码</h2>
   <div class="section">
-    <p>以下两张图片包含二维码。整图扫描不再依赖 <img> 元素，可检测视口内任意位置的二维码。</p>
-    <p class="expect">预期：点击 Popup「扫描当前页面」或按 Alt+Shift+Q 后，两张图片均出现蓝色高亮 Overlay，Badge 显示 2。二维码在截图中的位置与 Overlay 位置应精确对应。</p>
+    <p>以下两张图片包含二维码。扩展会截取当前可见视口并把整张截图交给 zxing-wasm 多阶段解码，不依赖逐个读取 <code>&lt;img&gt;</code> 元素。</p>
+    <p class="expect">预期：点击 Popup「扫描当前页面」或按 Alt+Shift+Q 后，两张图片均出现蓝色高亮 Overlay，Badge 显示 2。Overlay 位置应与二维码在页面上的位置对应。</p>
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://bing.com" alt="QR 1">
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://microsoft.com" alt="QR 2">
   </div>
 
-  <h2>2. 过滤测试 — 小尺寸图片</h2>
+  <h2>2. 小尺寸二维码</h2>
   <div class="section small">
-    <p>以下图片显示尺寸为 30×30 像素，低于 50×50 阈值。</p>
-    <p class="expect">预期：扫描时自动跳过该图片，不应出现 Overlay。</p>
+    <p>以下二维码显示尺寸为 30×30 像素。当前扫描不会按 DOM 图片尺寸主动过滤，但过小二维码可能因截图像素不足而无法稳定识别。</p>
+    <p class="expect">预期：不要求稳定识别；如果识别成功，Overlay 应出现在该二维码附近；如果未识别，不应影响其他二维码扫描。</p>
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=30x30&data=tiny" alt="Tiny QR">
   </div>
 
@@ -78,32 +78,13 @@
     <img src="https://via.placeholder.com/200x200/f0f0f0/333?text=Not+a+QR" alt="Placeholder">
   </div>
 
-  <h2>4. 右键菜单单图扫描</h2>
-  <div class="section">
-    <p>右键点击以下图片，选择「扫描此图片中的二维码」。第二张图片带有 <code>srcset</code>，用于验证 URL 匹配兼容性。</p>
-    <p class="expect">预期：弹出 Toast「识别成功」，并在被右键点击的图片上出现高亮 Overlay。点击 Overlay 应弹出操作菜单。</p>
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=right-click-test" alt="Right click test">
-    <img
-      src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=right-click-src"
-      srcset="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=right-click-srcset 1x"
-      alt="Right click srcset test"
-    >
-  </div>
-
-  <h2>5. 网页框选区域识别</h2>
-  <div class="section">
-    <p>点击 Popup「框选页面区域」，然后拖拽框选下方二维码。</p>
-    <p class="expect">预期：页面出现选区遮罩；框选后弹出识别结果。按 ESC 应取消框选并移除遮罩。</p>
-    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=region-select-test" alt="Region select test">
-  </div>
-
-  <h2>6. 剪贴板截图识别</h2>
+  <h2>4. 剪贴板截图识别</h2>
   <div class="section">
     <p>先用系统截图工具截取一个二维码到剪贴板，再点击 Popup「识别剪贴板」。</p>
-    <p class="expect">预期：Popup 显示识别结果数量，并在最近识别中新增记录。</p>
+    <p class="expect">预期：Popup 显示识别结果数量，并在最近识别中新增记录。剪贴板扫描不会在页面上绘制 Overlay。</p>
   </div>
 
-  <h2>7. 操作菜单交互</h2>
+  <h2>5. 操作菜单交互</h2>
   <div class="section">
     <p>扫描下方二维码后，点击蓝色高亮框测试菜单。</p>
     <p class="expect">预期：链接型内容显示「打开链接」「复制」「关闭」；普通文本只显示复制和关闭。点击页面空白处菜单消失。</p>
@@ -111,25 +92,19 @@
     <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=menu-interaction-text" alt="Menu text test">
   </div>
 
-  <h2>8. 清除标记</h2>
+  <h2>6. 清除标记</h2>
   <div class="section">
-    <p>扫描任意区域后，点击 Popup「清除标记」。</p>
-    <p class="expect">预期：所有 Overlay 和操作菜单消失，Badge 数字清零。</p>
+    <p>执行「扫描当前页面」后，点击 Popup「清除标记」。</p>
+    <p class="expect">预期：所有蓝色 Overlay 和操作菜单立即消失，Badge 数字清零；如果扫描仍在进行，清除后不应重新出现旧扫描的蓝框。</p>
   </div>
 
-  <h2>9. 视口外二维码（需滚动）</h2>
+  <h2>7. 视口外二维码（需滚动）</h2>
   <div class="scroll-target">
     <div>
       <p>滚动到此区域后，再执行扫描。</p>
       <p class="expect">预期：未滚动时截图扫描（只截取当前视口）不应识别此二维码；滚动到视口内后再扫描，应正常识别。整图扫描可检测视口内任意位置的二维码，不限于 <img> 标签。</p>
       <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=below-fold" alt="Below fold">
     </div>
-  </div>
-
-  <h2>10. SPA 动态监听测试</h2>
-  <div class="section">
-    <p>在设置页开启「自动扫描模式」后，前往 <a href="e2e-spa.html">SPA 端到端测试页</a>，测试 MutationObserver 和自动重扫功能。</p>
-    <p class="expect">预期：路由切换（点击导航按钮）或插入动态二维码后，扩展应自动重新扫描，且已有 Overlay 不会被清除。</p>
   </div>
 </body>
 </html>

@@ -2,7 +2,7 @@
 """
 QR SCANNER Release Packager
 Usage: python3 scripts/build-release.py [VERSION]
-Example: python3 scripts/build-release.py v0.1.0
+Example: python3 scripts/build-release.py v0.2.0
 """
 
 import os
@@ -97,5 +97,5 @@ def build_release(version: str) -> Path:
 
 
 if __name__ == '__main__':
-    version = sys.argv[1] if len(sys.argv) > 1 else 'v0.1.0'
+    version = sys.argv[1] if len(sys.argv) > 1 else 'v0.2.0'
     build_release(version)

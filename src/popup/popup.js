@@ -3,7 +3,6 @@
 
 document.addEventListener('DOMContentLoaded', async () => {
   const btnScan = document.getElementById('btn-scan');
-  const btnSelectRegion = document.getElementById('btn-select-region');
   const btnClipboard = document.getElementById('btn-clipboard');
   const btnClear = document.getElementById('btn-clear');
   const btnClearHistory = document.getElementById('btn-clear-history');
@@ -25,22 +24,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       setStatus('扫描已启动...');
     } catch (err) {
       setStatus('扫描失败: ' + err.message);
-    }
-  });
-
-  btnSelectRegion.addEventListener('click', async () => {
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab) {
-        setStatus('没有可用的当前页面');
-        return;
-      }
-
-      await chrome.tabs.sendMessage(tab.id, { action: 'START_REGION_SELECT' });
-      setStatus('请在页面中拖拽选择区域');
-      setTimeout(() => window.close(), 500);
-    } catch (err) {
-      setStatus('当前页面无法框选');
     }
   });
 
@@ -88,14 +71,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   btnClear.addEventListener('click', async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab) return;
-
     try {
+      setStatus('正在清除标记...');
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.id) {
+        setStatus('没有可用的当前页面');
+        return;
+      }
+
       await chrome.tabs.sendMessage(tab.id, { action: 'CLEAR_OVERLAYS' });
+      try {
+        await chrome.action.setBadgeText({ text: '', tabId: tab.id });
+      } catch (badgeErr) {
+        // 页面级 Badge 清理失败不影响页面标记清除。
+      }
       setStatus('标记已清除');
     } catch (err) {
-      setStatus('清除失败');
+      setStatus('清除失败，请刷新页面后重试');
     }
   });
 
